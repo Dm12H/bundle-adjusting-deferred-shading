@@ -48,8 +48,9 @@ def find_connected_faces(indices):
     for ei, ei_unique in enumerate(list(inverse_indices.cpu().numpy())):
         face_correspondences[ei_unique, face_correspondences_indices[ei_unique]] = face_ids[ei] 
         face_correspondences_indices[ei_unique] += 1
+    face_correspondences = face_correspondences.to(device=indices.device)
 
-    return face_correspondences[counts == 2].to(device=indices.device)
+    return face_correspondences[counts == 2]
 
 class AABB:
     def __init__(self, points):
@@ -200,7 +201,7 @@ def marching_cubes(voxel_grid: torch.tensor, voxel_occupancy: torch.tensor, leve
 
     from skimage import measure
     spacing = (voxel_grid[1, 1, 1] - voxel_grid[0, 0, 0]).cpu().numpy()
-    vertices, faces, normals, values = measure.marching_cubes_lewiner(voxel_occupancy.cpu().numpy(), level=0.5, spacing=spacing, **kwargs)
+    vertices, faces, normals, values = measure.marching_cubes(voxel_occupancy.cpu().numpy(), method='lewiner', level=0.5, spacing=spacing, **kwargs)
 
     # Re-center vertices
     vertices += voxel_grid[0, 0, 0].cpu().numpy()

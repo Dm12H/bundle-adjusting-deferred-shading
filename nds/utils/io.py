@@ -30,12 +30,13 @@ def read_views(directory, scale, device):
     
     views = []
     for image_path in image_paths:
-        views.append(View.load(image_path, device))
+        view = View.load(image_path, device)
+        if scale > 1:
+            view.scale(scale)
+        views.append(view)
     print("Found {:d} views".format(len(views)))
 
     if scale > 1:
-        for view in views:
-            view.scale(scale)
         print("Scaled views to 1/{:d}th size".format(scale))
 
     return views

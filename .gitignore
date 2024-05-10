@@ -2,4 +2,6 @@
 /nvdiffrast/
 /out/
 /temp/
+.idea
+.ipynb_checkpoints/
 *.pyc
