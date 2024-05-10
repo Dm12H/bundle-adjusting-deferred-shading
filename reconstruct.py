@@ -1,3 +1,4 @@
+import sys
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import matplotlib.pyplot as plt
 import meshzoo
@@ -157,6 +158,7 @@ class Reconstructor:
         loss.backward()
         self.vertices_optimizer.step()
         self.shader_optimizer.step()
+        self.mesh = mesh
         return loss.detach().cpu()
 
     def upsample_mesh(self):
@@ -240,16 +242,17 @@ class Reconstructor:
         for it in progress_bar:
             if it in self.params.upsample_iterations:
                 self.upsample_mesh()
-            self.reconstruction_step()
+            step_loss = self.reconstruction_step()
             can_vis = self.params.visualization_frequency > 0 and shader is not None
-            should_vis = self.iteration == 1 or self.iteration % self.params.visualization_frequency == 0
+            should_vis = it == 1 or it % self.params.visualization_frequency == 0
             if can_vis and should_vis:
                 self.visualize()
             can_save = self.params.save_frequency > 0
-            should_save = self.iteration == 1 or self.iteration % self.params.save_frequency == 0
+            should_save = it == 1 or it % self.params.save_frequency == 0
             if can_save and should_save:
                 self.save_mesh()
             self.iteration += 1
+            progress_bar.set_postfix({'loss': step_loss})
 
 
     def recover(self):
@@ -279,7 +282,7 @@ if __name__ == '__main__':
     parser.add_argument('--output_dir', type=Path, default="./out", help="Path to the output directory")
     parser.add_argument('--initial_mesh', type=str, default="vh32", help="Initial mesh, either a path or one of [vh16, vh32, vh64, sphere16]")
     parser.add_argument('--image_scale', type=int, default=1, help="Scale applied to the input images. The factor is 1/image_scale, so image_scale=2 halves the image size")
-    parser.add_argument("--timeout", type=int, default=1000, help="timeout for 1000 iterations to restart")
+    parser.add_argument("--timeout", type=int, default=800, help="timeout for 1000 iterations to restart")
     parser.add_argument('--iterations', type=int, default=2000, help="Total number of iterations")
     parser.add_argument('--run_name', type=str, default=None, help="Name of this run")
     parser.add_argument('--lr_vertices', type=float, default=1e-3, help="Step size/learning rate for the vertex positions")
@@ -320,18 +323,21 @@ if __name__ == '__main__':
                           fft_scale=args.fft_scale,
                           last_activation=torch.nn.Sigmoid,
                           device=device)
-    optimizer_shader = torch.optim.Adam(shader.parameters(), lr=args.lr_shader)
 
     reconstructor = Reconstructor(shader, args, device=device)
     while True:
-        training_job = Thread(target=reconstructor.run_to_completion, args=(args.iterations, ))
-        training_job.daemon = True
-        training_job.start()
-        print("running job!")
-        training_job.join(timeout=(args.timeout // args.image_scale))
-        if training_job.is_alive():
-            reconstructor.recover()
-        break
+        try:
+            training_job = Thread(target=reconstructor.run_to_completion, args=(args.iterations, ))
+            training_job.daemon = True
+            training_job.start()
+            print("running job!")
+            training_job.join(timeout=(args.timeout // args.image_scale))
+            if training_job.is_alive():
+                reconstructor.recover()
+            break
+        except KeyboardInterrupt:
+            sys.exit()
+
 
 
 
