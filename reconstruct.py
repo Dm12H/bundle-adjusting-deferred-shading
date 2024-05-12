@@ -5,7 +5,7 @@ import meshzoo
 import numpy as np
 from pathlib import Path
 from pyremesh import remesh_botsch
-from threading import Thread
+import multiprocessing as mp
 import torch
 from tqdm import tqdm
 
@@ -19,24 +19,34 @@ from nds.modules import (
     SpaceNormalization, NeuralShader, ViewSampler
 )
 from nds.utils import (
-    AABB, read_views, read_mesh, write_mesh, visualize_views, generate_mesh, mesh_generator_names
+    AABB, read_views, read_mesh, write_mesh, visualize_views, generate_mesh, mesh_generator_names, get_pose_init, quat_to_rot
 )
 
 class Reconstructor:
     def __init__(self,
-                 shader,
                  params,
                  device,
                  iter_n=1):
 
         self.iteration=iter_n
-        self.views = self.load_views(params.input_dir, params.image_scale, params.pose_estimate)
+        self.params = params
+        self.device = device
+
+        self.views = self.load_views()
         self.bbox = self.load_bbox(params.input_bbox, params.initial_mesh)
-        self.mesh = self.load_mesh(params.initial_mesh, self.views, self.bbox)
-        self.shader = shader
+        self.mesh_initial = self.load_mesh(self.views, self.bbox)
+        # Create the optimizer for the neural shader
+        self.shader = NeuralShader(
+            hidden_features_layers=params.hidden_features_layers,
+            hidden_features_size=params.hidden_features_size,
+            fourier_features=params.fourier_features,
+            activation=params.activation,
+            fft_scale=params.fft_scale,
+            last_activation=torch.nn.Sigmoid,
+            device=device)
         self.vertices_lr = params.lr_vertices
         self.shader_lr = params.lr_shader
-        self.params = params
+        self.pose_lr = params.lr_pose
         self.loss_weights = {
             "mask": params.weight_mask,
             "normal": params.weight_normal,
@@ -44,13 +54,20 @@ class Reconstructor:
             "shading": params.weight_shading
         }
         self.space_normalization = SpaceNormalization(self.bbox.corners)
-        self.device = device
 
         self._normalize_views()
-        self.shader_optimizer = torch.optim.Adam(shader.parameters(), lr=self.shader_lr)
+        self.mesh = self.mesh_initial
+        self.shader_optimizer = torch.optim.Adam(self.shader.parameters(), lr=self.shader_lr)
         self.vertex_offsets = torch.zeros_like(self.mesh.vertices)
         self.vertex_offsets.requires_grad = True
         self.vertices_optimizer = torch.optim.Adam([self.vertex_offsets], lr=self.vertices_lr)
+        if params.train_pose:
+            self.pose_vecs = torch.nn.Embedding(len(self.views), 7).to(device)
+            self.pose_vecs.weight.data.copy_(get_pose_init(self.views, self.device))
+            self.pose_optimizer= torch.optim.Adam(self.pose_vecs.parameters(), lr=self.pose_lr)
+        else:
+            self.pose_vecs = None
+            self.pose_optimizer = None
 
         # Configure the renderer
         self.renderer = Renderer(device=device)
@@ -68,24 +85,33 @@ class Reconstructor:
         self.shaders_save_path = experiment_dir / "shaders"
         self._create_dirs()
 
-    @staticmethod
-    def load_views(input_dir, image_scale, pose_estimate=None):
+        #bundle optimizers
+        self.optimizers = [self.vertices_optimizer, self.shader_optimizer]
+        if params.train_pose:
+            self.optimizers += [self.pose_optimizer]
+
+
+    def load_views(self):
         # Read the views
-        if pose_estimate is None:
-            views = read_views(input_dir, scale=image_scale,
-                               device=device)
-        else:
-            raise NotImplementedError("need to add colmap pipeline")
+        views = read_views(
+            self.params.input_dir,
+            scale=self.params.image_scale,
+            device=self.device,
+            approx=self.params.train_pose)
         return views
 
-    @staticmethod
-    def load_mesh(initial_mesh_name, views, bbox):
+
+    def load_mesh(self, views, bbox):
         # Obtain the initial mesh and compute its connectivity
-        if initial_mesh_name in mesh_generator_names:
+        if self.params.initial_mesh in mesh_generator_names:
             # Use args.initial_mesh as mesh generator name
             if bbox is None:
                 raise RuntimeError("Generated meshes require a bounding box.")
-            mesh = generate_mesh(initial_mesh_name, views, bbox, device=device)
+            mesh = generate_mesh(
+                self.params.initial_mesh,
+                views,
+                bbox,
+                device=self.device)
         else:
             # Use args.initial_mesh as path to the mesh
             mesh = read_mesh(args.initial_mesh_name, device=device)
@@ -116,16 +142,28 @@ class Reconstructor:
         # a 2-cube centered at (0, 0, 0), to the views, the mesh, and the bounding box
         normalizer = self.space_normalization
         self.views = normalizer.normalize_views(self.views)
-        self.mesh = normalizer.normalize_mesh(self.mesh)
+        self.mesh_initial = normalizer.normalize_mesh(self.mesh_initial)
         self.bbox = normalizer.normalize_aabb(self.bbox)
 
 
     def reconstruction_step(self):
 
-        mesh = self.mesh.with_vertices(self.mesh.vertices + self.vertex_offsets)
+        mesh = self.mesh_initial.with_vertices(
+            self.mesh_initial.vertices + self.vertex_offsets
+        )
 
         # Sample a view subset
-        views_subset = self.view_sampler(self.views)
+        views_subset, idx_subset = self.view_sampler(self.views)
+
+        # Replace camera position with learnable params
+        if self.params.train_pose:
+            for view, idx in zip(views_subset, idx_subset):
+                idx_on_device = torch.LongTensor([idx]).to(self.device)
+                pose_embed = self.pose_vecs(idx_on_device)
+                R_est = torch.squeeze(quat_to_rot(pose_embed[:, :4], self.device))
+                t_est = torch.squeeze(pose_embed)[4:]
+                view.camera.R = R_est
+                view.camera.t = t_est
 
         # Render the mesh from the views
         # Perform antialiasing here because we cannot antialias after shading if we only shade a some of the pixels
@@ -134,7 +172,7 @@ class Reconstructor:
             channels=['mask', 'position', 'normal'],
             with_antialiasing=True)
 
-        loss = torch.tensor(0., device=device)
+        loss = torch.tensor(0., device=self.device)
 
         # Combine losses and weights
         if (w := self.loss_weights['mask']) > 0:
@@ -153,11 +191,11 @@ class Reconstructor:
             loss += sh_loss * w
 
         # Optimize
-        self.vertices_optimizer.zero_grad()
-        self.shader_optimizer.zero_grad()
+        for optimizer in self.optimizers:
+            optimizer.zero_grad()
         loss.backward()
-        self.vertices_optimizer.step()
-        self.shader_optimizer.step()
+        for optimizer in self.optimizers:
+            optimizer.step()
         self.mesh = mesh
         return loss.detach().cpu()
 
@@ -173,8 +211,9 @@ class Reconstructor:
         v_upsampled = np.ascontiguousarray(v_upsampled)
         f_upsampled = np.ascontiguousarray(f_upsampled)
 
-        self.mesh = Mesh(v_upsampled, f_upsampled, device=self.device)
-        self.mesh.compute_connectivity()
+        self.mesh_initial = Mesh(v_upsampled, f_upsampled, device=self.device)
+        self.mesh_initial.compute_connectivity()
+        self.mesh = self.mesh_initial
 
         # Adjust weights and step size
         self.loss_weights['laplacian'] *= 4
@@ -185,6 +224,21 @@ class Reconstructor:
         self.vertex_offsets = torch.zeros_like(self.mesh.vertices)
         self.vertex_offsets.requires_grad = True
         self.vertices_optimizer = torch.optim.Adam([self.vertex_offsets], lr=self.vertices_lr)
+        self.optimizers = [self.vertices_optimizer, self.shader_optimizer]
+        if self.params.train_pose:
+            self.optimizers += [self.pose_optimizer]
+
+    def rebuild_mesh(self):
+        self.mesh_initial = self.load_mesh(self.views, self.bbox)
+        self.mesh_initial.compute_connectivity()
+        self.mesh = self.mesh_initial
+
+        # Create a new optimizer for the vertex offsets
+        self.vertex_offsets = torch.zeros_like(self.mesh.vertices)
+        self.vertex_offsets.requires_grad = True
+        self.vertices_optimizer = torch.optim.Adam([self.vertex_offsets], lr=self.vertices_lr)
+
+        self.optimizers = [self.vertices_optimizer, self.shader_optimizer, self.pose_optimizer]
 
 
     def visualize(self):
@@ -222,7 +276,7 @@ class Reconstructor:
                             self.images_save_path / "normal")
                 normal_path.mkdir(parents=True, exist_ok=True)
                 R = torch.tensor([[1, 0, 0], [0, -1, 0], [0, 0, -1]],
-                                 device=device, dtype=torch.float32)
+                                 device=self.device, dtype=torch.float32)
                 normal_image = (0.5 * (
                             normal @ debug_view.camera.R.T @ R.T + 1)) * \
                                debug_gbuffer["mask"] + (1 - debug_gbuffer["mask"])
@@ -242,8 +296,10 @@ class Reconstructor:
         for it in progress_bar:
             if it in self.params.upsample_iterations:
                 self.upsample_mesh()
+            if self.params.train_pose and it in self.params.rebuild_iterations:
+                self.rebuild_mesh()
             step_loss = self.reconstruction_step()
-            can_vis = self.params.visualization_frequency > 0 and shader is not None
+            can_vis = self.params.visualization_frequency > 0 and self.shader is not None
             should_vis = it == 1 or it % self.params.visualization_frequency == 0
             if can_vis and should_vis:
                 self.visualize()
@@ -264,30 +320,36 @@ class Reconstructor:
         shader_path = self.shaders_save_path / f"shader_{max_step:06d}.pt"
         self.iteration = max_step
         self.mesh = read_mesh(mesh_path, self.device)
-        self.mesh = self.space_normalization.normalize_mesh(self.mesh)
+        self.mesh_initial = self.space_normalization.normalize_mesh(self.mesh)
+        self.mesh = self.mesh_initial
         self.shader = NeuralShader.load(shader_path, self.device)
 
-        self.shader_optimizer = torch.optim.Adam(shader.parameters(), lr=self.shader_lr)
+        self.shader_optimizer = torch.optim.Adam(self.shader.parameters(), lr=self.shader_lr)
         self.vertex_offsets = torch.zeros_like(self.mesh.vertices)
         self.vertex_offsets.requires_grad = True
         self.vertices_optimizer = torch.optim.Adam([self.vertex_offsets], lr=self.vertices_lr)
         print(f"recovering at iteration {self.iteration}")
 
+def reconstruct(args, device):
+    reconstructor = Reconstructor(args, device)
+    reconstructor.run_to_completion(args.iterations)
 
 if __name__ == '__main__':
     parser = ArgumentParser(description='Multi-View Mesh Reconstruction with Neural Deferred Shading', formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument('--input_dir', type=Path, default="./data", help="Path to the input data")
     parser.add_argument('--input_bbox', type=Path, default=None, help="Path to the input bounding box. If None, it is computed from the input mesh")
-    parser.add_argument('--pose_estimate', type=str, choices=["colmap"], default=None, help="If camera poses are unknown")
+    parser.add_argument('--train_pose', action="store_true", help="whether to train camera poses")
     parser.add_argument('--output_dir', type=Path, default="./out", help="Path to the output directory")
     parser.add_argument('--initial_mesh', type=str, default="vh32", help="Initial mesh, either a path or one of [vh16, vh32, vh64, sphere16]")
     parser.add_argument('--image_scale', type=int, default=1, help="Scale applied to the input images. The factor is 1/image_scale, so image_scale=2 halves the image size")
-    parser.add_argument("--timeout", type=int, default=800, help="timeout for 1000 iterations to restart")
+    parser.add_argument("--timeout", type=int, default=1200, help="timeout for 1000 iterations to restart")
     parser.add_argument('--iterations', type=int, default=2000, help="Total number of iterations")
     parser.add_argument('--run_name', type=str, default=None, help="Name of this run")
     parser.add_argument('--lr_vertices', type=float, default=1e-3, help="Step size/learning rate for the vertex positions")
     parser.add_argument('--lr_shader', type=float, default=1e-3, help="Step size/learning rate for the shader parameters")
+    parser.add_argument('--lr_pose', type=float, default=1e-3, help="Step size/learning rate for learning camera poses")
     parser.add_argument('--upsample_iterations', type=int, nargs='+', default=[500, 1000, 1500], help="Iterations at which to perform mesh upsampling")
+    parser.add_argument('--rebuild_iterations', type=int, nargs='+',default=[500, 1000, 1500], help="Iterations at which to perform mesh upsampling")
     parser.add_argument('--save_frequency', type=int, default=100, help="Frequency of mesh and shader saving (in iterations)")
     parser.add_argument('--visualization_frequency', type=int, default=100, help="Frequency of shader visualization (in iterations)")
     parser.add_argument('--visualization_views', type=int, nargs='+', default=[], help="Views to use for visualization. By default, a random view is selected each time")
@@ -313,27 +375,19 @@ if __name__ == '__main__':
     if torch.cuda.is_available() and args.device >= 0:
         device = torch.device(f'cuda:{args.device}')
     print(f"Using device {device}")
-
-
-    # Create the optimizer for the neural shader
-    shader = NeuralShader(hidden_features_layers=args.hidden_features_layers,
-                          hidden_features_size=args.hidden_features_size,
-                          fourier_features=args.fourier_features,
-                          activation=args.activation,
-                          fft_scale=args.fft_scale,
-                          last_activation=torch.nn.Sigmoid,
-                          device=device)
-
-    reconstructor = Reconstructor(shader, args, device=device)
+    mp.set_start_method("spawn")
+    recover=True
     while True:
         try:
-            training_job = Thread(target=reconstructor.run_to_completion, args=(args.iterations, ))
+            training_job = mp.Process(target=reconstruct, args=(args, device))
             training_job.daemon = True
             training_job.start()
             print("running job!")
+            print(f"timer set to {args.timeout // args.image_scale}")
             training_job.join(timeout=(args.timeout // args.image_scale))
             if training_job.is_alive():
-                reconstructor.recover()
+                print("timeout's reached!, rerunning!")
+                training_job.terminate()
             break
         except KeyboardInterrupt:
             sys.exit()

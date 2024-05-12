@@ -31,24 +31,31 @@ class ViewSampler:
     def __call__(self, views):
         if self.mode == 'random':
             # Randomly select N views
-            return np.random.choice(views, self.views_per_iter, replace=False)
+            indices = np.arange(len(views))
+            sampled_indices = np.random.choice(indices, self.views_per_iter, replace=False)
+            sampled_views = [views[idx] for idx in sampled_indices]
+            return sampled_views, sampled_indices
         elif self.mode == 'sequential':
             # Select N views by traversing the full set of views sequentially
             # (After the last view, start again from the first)
             sampled_views = []
+            sampled_indices = []
             for _ in range(self.views_per_iter):
                 sampled_views += [views[self.current_index]]
+                sampled_indices += [self.current_index]
                 self.current_index = (self.current_index + 1) % self.num_views
-            return sampled_views
+            return sampled_views, sampled_indices
         elif self.mode == 'sequential_shuffled':
             # Select N views by traversing the full set of views sequentially, but in random order
             # (Each time the full set of views is traversed, randomly shuffle to create a new order)
             sampled_views = []
+            sampled_indices = []
             for _ in range(self.views_per_iter):
                 view_index = self.index_buffer[self.current_index]
                 sampled_views += [views[view_index]]
+                sampled_indices += [view_index]
                 self.current_index = (self.current_index + 1) 
                 if self.current_index >= self.num_views:
                     random.shuffle(self.index_buffer)
                     self.current_index = 0
-            return sampled_views
+            return sampled_views, sampled_indices

@@ -29,4 +29,8 @@ class Camera:
 
     @property
     def P(self):
-        return self.K @ torch.cat([self.R, self.t.unsqueeze(-1)], dim=-1)
+        return self.K @ self.Rt
+
+    @property
+    def Rt(self):
+        return torch.cat([self.R, self.t.unsqueeze(-1)], dim=-1)

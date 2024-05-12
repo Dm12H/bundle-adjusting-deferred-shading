@@ -6,14 +6,7 @@ import cv2
 from tqdm import tqdm
 
 from nds.utils.geometry import AABB
-
-def decompose(P):
-    K, R, c, _, _, _, _ = cv2.decomposeProjectionMatrix(P)
-    c = c[:3, 0] / c[3]
-    t = - R @ c
-    # ensure unique scaling of K matrix
-    K = K / K[2,2]
-    return K, R, t
+from nds.utils.idr import decompose
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -55,9 +48,9 @@ if __name__ == "__main__":
         views_output_dir.mkdir(parents=True, exist_ok=True)
         for i, view in enumerate(image_paths):
             K, R, t = decompose(cameras[f"world_mat_{i}"][:3,:])
-            np.savetxt(views_output_dir / f'cam{i:06d}_r.txt', R, fmt='%.20f')
-            np.savetxt(views_output_dir / f'cam{i:06d}_t.txt', t, fmt='%.20f')
-            np.savetxt(views_output_dir / f'cam{i:06d}_k.txt', K, fmt='%.20f')
+            np.savetxt(views_output_dir / f'dtu_cam{i:06d}_r.txt', R, fmt='%.20f')
+            np.savetxt(views_output_dir / f'dtu_cam{i:06d}_t.txt', t, fmt='%.20f')
+            np.savetxt(views_output_dir / f'dtu_cam{i:06d}_k.txt', K, fmt='%.20f')
 
             A_inv = cameras[f"scale_mat_{i}"]
             bbox_denormalized = (bbox @ A_inv[:3, :3].T) + A_inv[:3, 3][np.newaxis, :]
@@ -66,11 +59,4 @@ if __name__ == "__main__":
         # NOTE (MW): This assumes that all scale_mats are equal for a scan (which seems to be the case)
         #            Otherwise we would choose the last one, which seems a bit arbitrary
         aabb = AABB(bbox_denormalized)
-        aabb.save(scan_output_dir / "bbox.txt")
-        
-        # Convert the images and masks to a single RGBA PNG
-        for idx, (image, mask) in tqdm(enumerate(zip(image_paths, mask_paths)), leave=False):
-            color = np.concatenate((imageio.imread(image),
-                                    imageio.imread(mask, pilmode='L')[..., np.newaxis]), 
-                                    axis=-1)
-            imageio.imwrite(views_output_dir / f'cam{idx:06d}.png', color)
+        aabb.save(scan_output_dir / "bbox_dtu.txt")
