@@ -41,8 +41,9 @@ if __name__ == "__main__":
         # Make a unit aabb 
         #! WARNING! This assumes a symmetric bbox (aka cube) if the bbox is not a cube 
         #! this will not give the bbox back, but something similar
-        bbox = np.array([[-.5, -.5, -.5],
-                         [.5,  .5,  .5]], dtype=np.float32)
+        bbox = np.array([
+            [- 1, -1, -1],
+            [1,  1,  1]], dtype=np.float32)
 
         views_output_dir = scan_output_dir / "views"
         views_output_dir.mkdir(parents=True, exist_ok=True)

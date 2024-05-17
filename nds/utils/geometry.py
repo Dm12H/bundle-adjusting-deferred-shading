@@ -1,7 +1,9 @@
 import meshzoo
 import numpy as np
 import torch
+from sklearn.neighbors import NearestNeighbors
 from typing import List, Tuple, Union
+import multiprocessing as mp
 
 from nds.core import Mesh, View
 from nds.utils.images import sample
@@ -356,7 +358,55 @@ def generate_mesh(generator_name: str, views: List[View], aabb: AABB, device: to
     v, f = mesh_generators[generator_name]()
     return Mesh(v, f, device=device)
 
-# TEST:
-# indices = torch.tensor([[0, 1, 2], [0, 2, 3]])
-# find_connected_faces(indices)
-# Expected = tensor([[0, 1]])
+def sample_single_tri(input_):
+    n1, n2, v1, v2, tri_vert = input_
+    c = np.mgrid[:n1+1, :n2+1]
+    c += 0.5
+    c[0] /= max(n1, 1e-7)
+    c[1] /= max(n2, 1e-7)
+    c = np.transpose(c, (1,2,0))
+    k = c[c.sum(axis=-1) < 1]  # m2
+    q = v1 * k[:,:1] + v2 * k[:,1:] + tri_vert
+    return q
+
+
+def mesh_to_pcl(mesh, thresh=0.2):
+    vertices = np.asarray(mesh.vertices)
+    triangles = np.asarray(mesh.indices)
+    tri_vert = vertices[triangles]
+
+    v1 = tri_vert[:, 1] - tri_vert[:, 0]
+    v2 = tri_vert[:, 2] - tri_vert[:, 0]
+    l1 = np.linalg.norm(v1, axis=-1, keepdims=True)
+    l2 = np.linalg.norm(v2, axis=-1, keepdims=True)
+    area2 = np.linalg.norm(np.cross(v1, v2), axis=-1, keepdims=True)
+    non_zero_area = (area2 > 0)[:, 0]
+    l1, l2, area2, v1, v2, tri_vert = [
+        arr[non_zero_area] for arr in [l1, l2, area2, v1, v2, tri_vert]
+    ]
+    thr = thresh * np.sqrt(l1 * l2 / area2)
+    n1 = np.floor(l1 / thr)
+    n2 = np.floor(l2 / thr)
+
+    with mp.Pool() as mp_pool:
+        new_pts = mp_pool.map(sample_single_tri, (
+        (n1[i, 0], n2[i, 0], v1[i:i + 1], v2[i:i + 1], tri_vert[i:i + 1, 0])
+        for i in range(len(n1))), chunksize=1024)
+
+    new_pts = np.concatenate(new_pts, axis=0)
+    pcd = np.concatenate([vertices, new_pts], axis=0)
+
+    return pcd
+
+def downsample_cloud(cloud, thresh=0.2):
+    nn_engine = NearestNeighbors(n_neighbors=1, radius=thresh, algorithm='kd_tree', n_jobs=-1)
+    nn_engine.fit(cloud)
+    rnn_idxs = nn_engine.radius_neighbors(cloud, radius=thresh, return_distance=False)
+    mask = np.ones(cloud.shape[0], dtype=np.bool_)
+    for curr, idxs in enumerate(rnn_idxs):
+        if mask[curr]:
+            mask[idxs] = 0
+            mask[curr] = 1
+    points_downsampled = cloud[mask]
+    return points_downsampled
+

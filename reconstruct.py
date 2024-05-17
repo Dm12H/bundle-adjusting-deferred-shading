@@ -1,12 +1,17 @@
+import re
 import sys
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import matplotlib.pyplot as plt
 import meshzoo
 import numpy as np
+import open3d as o3d
 from pathlib import Path
+
+from scipy.io import loadmat
 from pyremesh import remesh_botsch
 import multiprocessing as mp
 import torch
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from nds.core import (
@@ -20,6 +25,11 @@ from nds.modules import (
 )
 from nds.utils import (
     AABB, read_views, read_mesh, write_mesh, visualize_views, generate_mesh, mesh_generator_names, get_pose_init, quat_to_rot
+)
+
+from evaluation.vis import vis_cameras, draw_pcd, pcl_chamfer_color
+from evaluation.metrics import (
+    prepare_pcl, chamfer_dist, psnr_metric, camera_est_errors
 )
 
 class Reconstructor:
@@ -79,17 +89,36 @@ class Reconstructor:
         # Set up save paths
         run_name = params.run_name if params.run_name is not None else params.input_dir.parent.name
         experiment_dir = params.output_dir / run_name
+        self.out_dir = experiment_dir
+        self.id = int(re.match(r"\d+", run_name).group())
 
         self.images_save_path = experiment_dir / "images"
         self.meshes_save_path = experiment_dir / "meshes"
         self.shaders_save_path = experiment_dir / "shaders"
+        self.cameras_save_path = experiment_dir / "cameras"
         self._create_dirs()
-
+        self.summary = SummaryWriter(experiment_dir)
         #bundle optimizers
         self.optimizers = [self.vertices_optimizer, self.shader_optimizer]
         if params.train_pose:
             self.optimizers += [self.pose_optimizer]
 
+        if self.params.gt_masks is not None:
+            self.gt_masks = loadmat(
+                self.params.gt_masks / f"ObsMask{self.id}_10.mat")
+            self.gt_ground = loadmat(
+                self.params.gt_masks / f"Plane{self.id}.mat")['P']
+        else:
+            self.gt_masks = None
+            self.gt_ground = None
+
+        if self.params.gt_points is not None:
+            points_path = self.params.gt_points / f"stl{self.id:03d}_total.ply"
+            self.gt_points = o3d.io.read_point_cloud(
+                points_path.absolute().as_posix()
+            )
+        else:
+            self.gt_points = None
 
     def load_views(self):
         # Read the views
@@ -133,6 +162,8 @@ class Reconstructor:
         self.images_save_path.mkdir(parents=True, exist_ok=True)
         self.meshes_save_path.mkdir(parents=True, exist_ok=True)
         self.shaders_save_path.mkdir(parents=True, exist_ok=True)
+        if self.params.train_pose:
+            self.cameras_save_path.mkdir(parents=True, exist_ok=True)
 
     def visualize_views(self, save_path):
         visualize_views(self.views, show=False, save_path=save_path)
@@ -176,11 +207,17 @@ class Reconstructor:
 
         # Combine losses and weights
         if (w := self.loss_weights['mask']) > 0:
-            loss += mask_loss(views_subset, gbuffers) * w
+            m_loss = mask_loss(views_subset, gbuffers)
+            loss += m_loss * w
+            self.summary.add_scalar("Loss/mask", m_loss, self.iteration)
         if (w := self.loss_weights['normal']) > 0:
-            loss += normal_consistency_loss(mesh) * w
+            n_loss = normal_consistency_loss(mesh)
+            loss += n_loss * w
+            self.summary.add_scalar("Loss/normal", n_loss, self.iteration)
         if (w := self.loss_weights['laplacian']) > 0:
-            loss += laplacian_loss(mesh) * w
+            l_loss = laplacian_loss(mesh)
+            loss += l_loss * w
+            self.summary.add_scalar("Loss/laplacian", l_loss, self.iteration)
         if (w := self.loss_weights['shading']) > 0:
             sh_loss = shading_loss(
                 views_subset,
@@ -189,7 +226,8 @@ class Reconstructor:
                 shading_percentage=self.params.shading_percentage
             )
             loss += sh_loss * w
-
+            self.summary.add_scalar("Loss/shading", sh_loss, self.iteration)
+        self.summary.add_scalar("Loss/total", loss, self.iteration)
         # Optimize
         for optimizer in self.optimizers:
             optimizer.zero_grad()
@@ -197,6 +235,15 @@ class Reconstructor:
         for optimizer in self.optimizers:
             optimizer.step()
         self.mesh = mesh
+
+        # record camera pose errors
+        dir_errors, pos_errors = [], []
+        for view in self.views:
+            angle_err, pos_err = camera_est_errors(view)
+            dir_errors.append(angle_err)
+            pos_errors.append(pos_err)
+        self.summary.add_scalar("Cameras/direction_err", np.mean(dir_errors), self.iteration)
+        self.summary.add_scalar("Cameras/position_err", np.mean(pos_errors), self.iteration)
         return loss.detach().cpu()
 
     def upsample_mesh(self):
@@ -240,6 +287,20 @@ class Reconstructor:
 
         self.optimizers = [self.vertices_optimizer, self.shader_optimizer, self.pose_optimizer]
 
+    def render_view(self, view):
+        gbuffer = self.renderer.render(
+            [view],
+            self.mesh,
+            channels=['mask', 'position', 'normal'],
+            with_antialiasing=True)[0]
+        position = gbuffer["position"]
+        normal = gbuffer["normal"]
+        view_direction = torch.nn.functional.normalize(
+            view.camera.center - position, dim=-1)
+
+        shaded_image = self.shader(position, normal, view_direction)
+        mask = gbuffer["mask"]
+        return shaded_image, mask, normal
 
     def visualize(self):
         with (torch.no_grad()):
@@ -248,21 +309,12 @@ class Reconstructor:
                 view_indices = self.params.visualization_views
             else:
                 view_indices=[np.random.choice(list(range(len(self.views))))]
+            vi_psnr = []
             for vi in view_indices:
                 debug_view = self.views[vi]
-                debug_gbuffer = self.renderer.render(
-                    [debug_view],
-                    self.mesh,
-                    channels=['mask', 'position', 'normal'],
-                    with_antialiasing=True)[0]
-                position = debug_gbuffer["position"]
-                normal = debug_gbuffer["normal"]
-                view_direction = torch.nn.functional.normalize(
-                    debug_view.camera.center - position, dim=-1)
-
+                shaded_image, mask, normal = self.render_view(debug_view)
                 # Save the shaded rendering
-                shaded_image = self.shader(position, normal, view_direction) * \
-                               debug_gbuffer["mask"] + (1 - debug_gbuffer["mask"])
+                shaded_image = shaded_image * mask + (1 - mask)
                 shaded_path = (self.images_save_path / str(
                     vi) / "shaded") if use_fixed_views else (
                             self.images_save_path / "shaded")
@@ -279,9 +331,20 @@ class Reconstructor:
                                  device=self.device, dtype=torch.float32)
                 normal_image = (0.5 * (
                             normal @ debug_view.camera.R.T @ R.T + 1)) * \
-                               debug_gbuffer["mask"] + (1 - debug_gbuffer["mask"])
+                            mask + (1 - mask)
                 plt.imsave(normal_path / f'neuralshading_{self.iteration}.png',
                            normal_image.cpu().numpy())
+
+                # calc psnr
+                vi_psnr.append(psnr_metric(debug_view, shaded_image))
+
+            if self.params.train_pose:
+                cam_path = self.cameras_save_path / f"cams_{self.iteration}.png"
+                vis_cameras(self.views,  cam_path)
+
+            self.summary.add_scalar("Errors/PSNR", np.mean(vi_psnr), self.iteration)
+
+
 
     def save_mesh(self):
         with torch.no_grad():
@@ -309,6 +372,28 @@ class Reconstructor:
                 self.save_mesh()
             self.iteration += 1
             progress_bar.set_postfix({'loss': step_loss})
+            self.summary.flush()
+        print("training finished")
+        if self.gt_points is not None and self.gt_masks is not None:
+            self.denormalize()
+            denorm_mesh = self.space_normalization.denormalize_mesh(
+                self.mesh.detach().to('cpu')
+            )
+            gt_cloud, eval_cloud = prepare_pcl(
+                denorm_mesh, self.gt_points, self.gt_masks, self.gt_ground)
+            colored_cloud = pcl_chamfer_color(gt_cloud, eval_cloud)
+            # view 31 has a good viewing angle with minor correction
+            full_out_path = self.out_dir / "chamfer_vis.png"
+            draw_pcd(
+                colored_cloud,
+                self.views[32],
+                full_out_path.absolute().as_posix(),
+                y_correction=5,
+                scale=self.params.image_scale)
+
+
+    def denormalize(self):
+        self.space_normalization.denormalize_views(self.views)
 
 
     def recover(self):
@@ -340,6 +425,8 @@ if __name__ == '__main__':
     parser.add_argument('--input_bbox', type=Path, default=None, help="Path to the input bounding box. If None, it is computed from the input mesh")
     parser.add_argument('--train_pose', action="store_true", help="whether to train camera poses")
     parser.add_argument('--output_dir', type=Path, default="./out", help="Path to the output directory")
+    parser.add_argument('--gt_points', type=Path, default=None, help="Path to the ground truth  points directory")
+    parser.add_argument('--gt_masks', type=Path, default=None, help="Path to the ground truth masks")
     parser.add_argument('--initial_mesh', type=str, default="vh32", help="Initial mesh, either a path or one of [vh16, vh32, vh64, sphere16]")
     parser.add_argument('--image_scale', type=int, default=1, help="Scale applied to the input images. The factor is 1/image_scale, so image_scale=2 halves the image size")
     parser.add_argument("--timeout", type=int, default=1200, help="timeout for 1000 iterations to restart")
@@ -377,20 +464,21 @@ if __name__ == '__main__':
     print(f"Using device {device}")
     mp.set_start_method("spawn")
     recover=True
-    while True:
-        try:
-            training_job = mp.Process(target=reconstruct, args=(args, device))
-            training_job.daemon = True
-            training_job.start()
-            print("running job!")
-            print(f"timer set to {args.timeout // args.image_scale}")
-            training_job.join(timeout=(args.timeout // args.image_scale))
-            if training_job.is_alive():
-                print("timeout's reached!, rerunning!")
-                training_job.terminate()
-            break
-        except KeyboardInterrupt:
-            sys.exit()
+    reconstruct(args, device)
+    # while True:
+    #     try:
+    #         print("running job!")
+    #         training_job = mp.Process(target=reconstruct, args=(args, device))
+    #         training_job.daemon = True
+    #         training_job.start()
+    #         print(f"timer set to {args.timeout // args.image_scale}")
+    #         training_job.join(timeout=(args.timeout // args.image_scale))
+    #         if training_job.is_alive():
+    #             print("timeout's reached!, rerunning!")
+    #             training_job.terminate()
+    #         break
+    #     except KeyboardInterrupt:
+    #         sys.exit()
 
 
 

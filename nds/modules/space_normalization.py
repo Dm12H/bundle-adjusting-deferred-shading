@@ -25,3 +25,7 @@ class SpaceNormalization:
     def denormalize_mesh(self, mesh: Mesh):
         v_denormalized = mesh.vertices.cpu().numpy() @ self.A_inv[:3, :3].T + self.A_inv[:3, 3][np.newaxis, :]
         return mesh.with_vertices(v_denormalized)
+
+    def denormalize_views(self, views: List[View]):
+        for view in views:
+            view.transform(self.A_inv, self.A)
