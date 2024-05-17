@@ -34,34 +34,37 @@ from evaluation.metrics import (
 
 class Reconstructor:
     def __init__(self,
-                 params,
+                 cfg,
                  device,
                  iter_n=1):
 
         self.iteration=iter_n
-        self.params = params
+        self.paths = cfg.paths
+        self.params = cfg.params
+        self.run_params = cfg.run
         self.device = device
 
         self.views = self.load_views()
-        self.bbox = self.load_bbox(params.input_bbox, params.initial_mesh)
+        self.bbox = self.load_bbox(self.paths.input_bbox,
+                                   self.params.initial_mesh)
         self.mesh_initial = self.load_mesh(self.views, self.bbox)
         # Create the optimizer for the neural shader
         self.shader = NeuralShader(
-            hidden_features_layers=params.hidden_features_layers,
-            hidden_features_size=params.hidden_features_size,
-            fourier_features=params.fourier_features,
-            activation=params.activation,
-            fft_scale=params.fft_scale,
+            hidden_features_layers=self.params.shader.hidden_features_layers,
+            hidden_features_size=self.params.shader.hidden_features_size,
+            fourier_features=self.params.shader.fourier_features,
+            activation=self.params.shader.activation,
+            fft_scale=self.params.shader.fft_scale,
             last_activation=torch.nn.Sigmoid,
             device=device)
-        self.vertices_lr = params.lr_vertices
-        self.shader_lr = params.lr_shader
-        self.pose_lr = params.lr_pose
+        self.vertices_lr = self.params.lrs.lr_vertices
+        self.shader_lr = self.params.lrs.lr_shader
+        self.pose_lr = self.params.lrs.lr_pose
         self.loss_weights = {
-            "mask": params.weight_mask,
-            "normal": params.weight_normal,
-            "laplacian": params.weight_laplacian,
-            "shading": params.weight_shading
+            "mask": self.params.loss_weights.weight_mask,
+            "normal": self.params.loss_weights.weight_normal,
+            "laplacian": self.params.loss_weights.weight_laplacian,
+            "shading": self.params.loss_weights.weight_shading
         }
         self.space_normalization = SpaceNormalization(self.bbox.corners)
 
@@ -71,7 +74,7 @@ class Reconstructor:
         self.vertex_offsets = torch.zeros_like(self.mesh.vertices)
         self.vertex_offsets.requires_grad = True
         self.vertices_optimizer = torch.optim.Adam([self.vertex_offsets], lr=self.vertices_lr)
-        if params.train_pose:
+        if self.params.train_pose:
             self.pose_vecs = torch.nn.Embedding(len(self.views), 7).to(device)
             self.pose_vecs.weight.data.copy_(get_pose_init(self.views, self.device))
             self.pose_optimizer= torch.optim.Adam(self.pose_vecs.parameters(), lr=self.pose_lr)
@@ -84,11 +87,17 @@ class Reconstructor:
         self.renderer.set_near_far(self.views, torch.from_numpy(self.bbox.corners).to(device), epsilon=0.5)
 
         # Configure the view sampler
-        self.view_sampler = ViewSampler(views=self.views, **ViewSampler.get_parameters(params))
+        self.view_sampler = ViewSampler(
+            views=self.views,
+            **ViewSampler.get_parameters(cfg.params.view_sampler))
 
         # Set up save paths
-        run_name = params.run_name if params.run_name is not None else params.input_dir.parent.name
-        experiment_dir = params.output_dir / run_name
+        if cfg.run.run_name is not None:
+            run_name = cfg.run.run_name
+        else:
+            run_name = cfg.paths.input_dir.parent.name
+
+        experiment_dir = cfg.paths.output_dir / run_name
         self.out_dir = experiment_dir
         self.id = int(re.match(r"\d+", run_name).group())
 
@@ -100,10 +109,10 @@ class Reconstructor:
         self.summary = SummaryWriter(experiment_dir)
         #bundle optimizers
         self.optimizers = [self.vertices_optimizer, self.shader_optimizer]
-        if params.train_pose:
+        if self.params.train_pose:
             self.optimizers += [self.pose_optimizer]
 
-        if self.params.gt_masks is not None:
+        if self.paths.gt_masks is not None:
             self.gt_masks = loadmat(
                 self.params.gt_masks / f"ObsMask{self.id}_10.mat")
             self.gt_ground = loadmat(
@@ -112,7 +121,7 @@ class Reconstructor:
             self.gt_masks = None
             self.gt_ground = None
 
-        if self.params.gt_points is not None:
+        if self.paths.gt_points is not None:
             points_path = self.params.gt_points / f"stl{self.id:03d}_total.ply"
             self.gt_points = o3d.io.read_point_cloud(
                 points_path.absolute().as_posix()
@@ -123,8 +132,8 @@ class Reconstructor:
     def load_views(self):
         # Read the views
         views = read_views(
-            self.params.input_dir,
-            scale=self.params.image_scale,
+            self.paths.input_dir,
+            scale=self.run_params.image_scale,
             device=self.device,
             approx=self.params.train_pose)
         return views
@@ -223,7 +232,7 @@ class Reconstructor:
                 views_subset,
                 gbuffers,
                 shader=self.shader,
-                shading_percentage=self.params.shading_percentage
+                shading_percentage=self.params.shader.shading_percentage
             )
             loss += sh_loss * w
             self.summary.add_scalar("Loss/shading", sh_loss, self.iteration)
@@ -304,9 +313,9 @@ class Reconstructor:
 
     def visualize(self):
         with (torch.no_grad()):
-            use_fixed_views = len(self.params.visualization_views) > 0
+            use_fixed_views = len(self.run_params.visualization_views) > 0
             if use_fixed_views:
-                view_indices = self.params.visualization_views
+                view_indices = self.run_params.visualization_views
             else:
                 view_indices=[np.random.choice(list(range(len(self.views))))]
             vi_psnr = []
@@ -354,20 +363,22 @@ class Reconstructor:
                        mesh_for_writing)
         self.shader.save(self.shaders_save_path / f'shader_{self.iteration:06d}.pt')
 
-    def run_to_completion(self, total):
+    def run_to_completion(self, total=None):
+        if total is None:
+            total = self.run_params.iterations
         progress_bar = tqdm(range(self.iteration, total + 1))
         for it in progress_bar:
-            if it in self.params.upsample_iterations:
+            if it in self.run_params.upsample_iterations:
                 self.upsample_mesh()
-            if self.params.train_pose and it in self.params.rebuild_iterations:
+            if self.params.train_pose and it in self.run_params.rebuild_iterations:
                 self.rebuild_mesh()
             step_loss = self.reconstruction_step()
-            can_vis = self.params.visualization_frequency > 0 and self.shader is not None
-            should_vis = it == 1 or it % self.params.visualization_frequency == 0
+            can_vis = self.run_params.visualization_frequency > 0 and self.shader is not None
+            should_vis = it == 1 or it % self.run_params.visualization_frequency == 0
             if can_vis and should_vis:
                 self.visualize()
-            can_save = self.params.save_frequency > 0
-            should_save = it == 1 or it % self.params.save_frequency == 0
+            can_save = self.run_params.save_frequency > 0
+            should_save = it == 1 or it % self.run_params.save_frequency == 0
             if can_save and should_save:
                 self.save_mesh()
             self.iteration += 1
@@ -389,7 +400,7 @@ class Reconstructor:
                 self.views[32],
                 full_out_path.absolute().as_posix(),
                 y_correction=5,
-                scale=self.params.image_scale)
+                scale=self.run_params.image_scale)
 
 
     def denormalize(self):

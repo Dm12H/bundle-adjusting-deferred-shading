@@ -1,0 +1,25 @@
+initial_mesh: vh32
+train_pose: false
+lrs:
+  lr_vertices: 1.0e-3
+  lr_shader: 1.0e-3
+  lr_pose: 1.0e-3
+
+loss_weights:
+  weight_mask: 2.0
+  weight_normal: 0.1
+  weight_laplacian: 40.0
+  weight_shading: 1.0
+
+shader:
+  shading_percentage: 0.75
+  hidden_features_layers: 3
+  hidden_features_size: 256
+  fourier_features: "positional"
+  activation: "relu"
+  fft_scale: 4
+
+view_sampler:
+  view_sampling_mode: "random"
+  views_per_iter: 1
+

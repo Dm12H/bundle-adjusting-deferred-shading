@@ -27,7 +27,7 @@ def write_mesh(path, mesh):
     mesh_.export(path)
 
 def read_views(directory, scale, device, approx=False):
-    directory = Path(directory)
+    assert isinstance(directory, Path), "view directory must be a path"
 
     image_paths = sorted([path for path in directory.iterdir() if (path.is_file() and path.suffix == '.png')])
     if approx:

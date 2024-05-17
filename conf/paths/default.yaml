@@ -1,0 +1,8 @@
+input_dir: null
+input_bbox: null
+output_dir: ./out
+gt_points: null
+gt_masks: null
+
+defaults:
+  - base_paths
