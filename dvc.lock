@@ -1,0 +1,86 @@
+schema: '2.0'
+stages:
+  prepare-dataset-obsmask:
+    cmd:
+    - mkdir -p data
+    - wget -c -O data/sampleset.zip --progress=bar --read-timeout=30 --timeout=30
+      -t 5  http://roboimagedata2.compute.dtu.dk/data/MVS/SampleSet.zip
+    - unzip -jq -o data/sampleset.zip "SampleSet/MVS Data/ObsMask/*" -d data/ObsMask/
+    - touch data/prepare-dataset-obsmask.lock
+    - rm -r SampleSet
+    - rm data/SampleSet.zip
+    deps:
+    - path: data/prepare-dataset-obsmask.lock
+      hash: md5
+      md5: d41d8cd98f00b204e9800998ecf8427e
+      size: 0
+    outs:
+    - path: data/ObsMask
+      hash: md5
+      md5: 7fd0444fddee08109ebc9fe594e61e85.dir
+      size: 139850127
+      nfiles: 204
+  prepare-dataset-dtu:
+    cmd:
+    - mkdir -p data/dtu-nds
+    - wget -c -O data/data.zip --progress=bar --read-timeout=30 --timeout=30 -t 5  https://www.dropbox.com/s/56ym2qrjfg7jymo/data.zip
+    - unzip -q -o data/data.zip -d data/
+    - cp -r data/data/* data/dtu-nds/
+    - touch data/prepare-dataset-dtu.lock
+    - rm -r data/data
+    - rm data/data.zip
+    deps:
+    - path: data/prepare-dataset-dtu.lock
+      hash: md5
+      md5: d41d8cd98f00b204e9800998ecf8427e
+      size: 0
+    outs:
+    - path: data/dtu-nds
+      hash: md5
+      md5: f92cf3cc845f8f03adbcd9906535eaef.dir
+      size: 2435267973
+      nfiles: 3634
+  prepare-dataset-points:
+    cmd:
+    - mkdir -p data
+    - wget -c -O data/points.zip --progress=bar --read-timeout=30 --timeout=30 -t
+      5  http://roboimagedata2.compute.dtu.dk/data/MVS/Points.zip
+    - unzip -q -o data/points.zip -d data/
+    - touch data/prepare-dataset-points.lock
+    - rm data/points.zip
+    deps:
+    - path: data/prepare-dataset-point.lock
+      hash: md5
+      md5: d41d8cd98f00b204e9800998ecf8427e
+      size: 0
+    outs:
+    - path: data/Points
+      hash: md5
+      md5: 3629973c91f808ae534c45454f2caa40.dir
+      size: 12488383411
+      nfiles: 124
+  prepare-dataset-idr:
+    cmd:
+    - mkdir -p data
+    - wget -c -O data/idr.zip --progress=bar --read-timeout=30 --timeout=30 -t 5  https://www.dropbox.com/s/ujmakiaiekdl6sh/DTU.zip
+    - unzip -q -o data/idr.zip -d data/
+    - python3 get_idr_init_poses.py data/DTU data/dtu-idr/ data/dtu-nds
+    - touch data/prepare-dataset-idr.lock
+    - rm data/idr.zip
+    - rm -r data/DTU
+    deps:
+    - path: data/dtu-nds
+      hash: md5
+      md5: f92cf3cc845f8f03adbcd9906535eaef.dir
+      size: 2435267973
+      nfiles: 3634
+    - path: data/prepare-dataset-idr.lock
+      hash: md5
+      md5: d41d8cd98f00b204e9800998ecf8427e
+      size: 0
+    outs:
+    - path: data/dtu-idr/
+      hash: md5
+      md5: 072f5123da673e1f2c846e1cc60e5568.dir
+      size: 433569
+      nfiles: 2580
