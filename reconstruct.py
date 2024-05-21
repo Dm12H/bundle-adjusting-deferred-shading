@@ -417,7 +417,7 @@ class Reconstructor:
                 full_out_path.absolute().as_posix(),
                 y_correction=5,
                 scale=self.run_params.image_scale)
-        for path in (self.paths.output_dir, self.exp_dir)
+        for path in (self.paths.output_dir, self.exp_dir):
             with open(path / 'metrics.json', 'w') as f:
                 json.dump(metrics, f)
 

@@ -5,7 +5,6 @@ stages:
       - wget -c -O data/sampleset.zip --progress=bar --read-timeout=30 --timeout=30 -t 5  http://roboimagedata2.compute.dtu.dk/data/MVS/SampleSet.zip
       - unzip -jq -o data/sampleset.zip "SampleSet/MVS Data/ObsMask/*" -d data/ObsMask/
       - touch data/prepare-dataset-obsmask.lock
-      - rm -r SampleSet
       - rm data/SampleSet.zip
     deps:
       - data/prepare-dataset-obsmask.lock
@@ -36,7 +35,7 @@ stages:
       - touch data/prepare-dataset-points.lock
       - rm data/points.zip
     deps:
-      - data/prepare-dataset-point.lock
+      - data/prepare-dataset-points.lock
     outs:
       - data/Points:
           persist: true
