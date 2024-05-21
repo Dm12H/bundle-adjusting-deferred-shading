@@ -417,13 +417,12 @@ class Reconstructor:
                 full_out_path.absolute().as_posix(),
                 y_correction=5,
                 scale=self.run_params.image_scale)
-        with open(self.paths.output_dir / 'metrics.json', 'w') as f:
-            json.dump(metrics, f)
-
+        for path in (self.paths.output_dir, self.exp_dir)
+            with open(path / 'metrics.json', 'w') as f:
+                json.dump(metrics, f)
 
     def denormalize(self):
         self.space_normalization.denormalize_views(self.views)
-
 
     def recover(self):
         max_step = 0
