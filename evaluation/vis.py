@@ -1,5 +1,4 @@
 from copy import deepcopy
-import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import open3d as o3d
@@ -43,16 +42,18 @@ def vis_cameras(views, out_path, colors=("blue","magenta")):
            zlabel="Y")
     fig.savefig(out_path)
 
+
 def pcl_chamfer_color(gt_pcl, mesh_pcl, clip=10):
     mesh_to_pcl_dist = np.asarray(
         mesh_pcl.compute_point_cloud_distance(gt_pcl)
     )
     clipped_distances = np.clip(mesh_to_pcl_dist, a_min=0, a_max=clip) / clip
-    cmap = matplotlib.cm.get_cmap('jet')
+    cmap = plt.get_cmap('jet')
     colors = cmap(clipped_distances)[:, :3]
     vis_mesh = deepcopy(mesh_pcl)
     vis_mesh.colors = o3d.pybind.utility.Vector3dVector(colors)
     return vis_mesh
+
 
 def draw_pcd(pcd, view, out_path, y_correction=0, scale=1):
     vis = o3d.visualization.Visualizer()

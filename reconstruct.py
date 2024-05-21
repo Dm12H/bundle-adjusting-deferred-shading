@@ -1,5 +1,6 @@
 import re
 import sys
+import json
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import matplotlib.pyplot as plt
 import meshzoo
@@ -29,8 +30,9 @@ from nds.utils import (
 
 from evaluation.vis import vis_cameras, draw_pcd, pcl_chamfer_color
 from evaluation.metrics import (
-    prepare_pcl, chamfer_dist, psnr_metric, camera_est_errors
+    prepare_pcl, chamfer_dist, psnr_metric, camera_est_errors, ssim_metric
 )
+
 
 class Reconstructor:
     def __init__(self,
@@ -44,9 +46,16 @@ class Reconstructor:
         self.run_params = cfg.run
         self.device = device
 
+        if cfg.run.run_name is not None:
+            run_name = cfg.run.run_name
+            self.run_name = run_name
+        else:
+            raise ValueError("run_name is expected")
+
         self.views = self.load_views()
-        self.bbox = self.load_bbox(self.paths.input_bbox,
-                                   self.params.initial_mesh)
+        self.bbox = self.load_bbox(
+            self.paths.input_bbox / run_name / "bbox.txt",
+            self.params.initial_mesh)
         self.mesh_initial = self.load_mesh(self.views, self.bbox)
         # Create the optimizer for the neural shader
         self.shader = NeuralShader(
@@ -92,13 +101,9 @@ class Reconstructor:
             **ViewSampler.get_parameters(cfg.params.view_sampler))
 
         # Set up save paths
-        if cfg.run.run_name is not None:
-            run_name = cfg.run.run_name
-        else:
-            run_name = cfg.paths.input_dir.parent.name
 
         experiment_dir = cfg.paths.output_dir / run_name
-        self.out_dir = experiment_dir
+        self.exp_dir = experiment_dir
         self.id = int(re.match(r"\d+", run_name).group())
 
         self.images_save_path = experiment_dir / "images"
@@ -114,15 +119,15 @@ class Reconstructor:
 
         if self.paths.gt_masks is not None:
             self.gt_masks = loadmat(
-                self.params.gt_masks / f"ObsMask{self.id}_10.mat")
+                self.paths.gt_masks / f"ObsMask{self.id}_10.mat")
             self.gt_ground = loadmat(
-                self.params.gt_masks / f"Plane{self.id}.mat")['P']
+                self.paths.gt_masks / f"Plane{self.id}.mat")['P']
         else:
             self.gt_masks = None
             self.gt_ground = None
 
         if self.paths.gt_points is not None:
-            points_path = self.params.gt_points / f"stl{self.id:03d}_total.ply"
+            points_path = self.paths.gt_points / f"stl/stl{self.id:03d}_total.ply"
             self.gt_points = o3d.io.read_point_cloud(
                 points_path.absolute().as_posix()
             )
@@ -132,7 +137,7 @@ class Reconstructor:
     def load_views(self):
         # Read the views
         views = read_views(
-            self.paths.input_dir,
+            self.paths.input_dir / self.run_name / "views",
             scale=self.run_params.image_scale,
             device=self.device,
             approx=self.params.train_pose)
@@ -385,6 +390,16 @@ class Reconstructor:
             progress_bar.set_postfix({'loss': step_loss})
             self.summary.flush()
         print("training finished")
+        metrics = {}
+        psnr_views = []
+        ssim_views = []
+        with torch.no_grad():
+            for view in self.views:
+                shaded_image, *_ = self.render_view(view)
+                psnr_views.append(psnr_metric(view, shaded_image))
+                ssim_views.append(ssim_metric(view, shaded_image))
+        metrics["SSIM"] = np.mean(ssim_views)
+        metrics["PSNR"] = np.mean(psnr_views)
         if self.gt_points is not None and self.gt_masks is not None:
             self.denormalize()
             denorm_mesh = self.space_normalization.denormalize_mesh(
@@ -392,15 +407,18 @@ class Reconstructor:
             )
             gt_cloud, eval_cloud = prepare_pcl(
                 denorm_mesh, self.gt_points, self.gt_masks, self.gt_ground)
+            metrics["Chamfer"] = chamfer_dist(gt_cloud, eval_cloud)
             colored_cloud = pcl_chamfer_color(gt_cloud, eval_cloud)
             # view 31 has a good viewing angle with minor correction
-            full_out_path = self.out_dir / "chamfer_vis.png"
+            full_out_path = self.exp_dir / "chamfer_vis.png"
             draw_pcd(
                 colored_cloud,
                 self.views[32],
                 full_out_path.absolute().as_posix(),
                 y_correction=5,
                 scale=self.run_params.image_scale)
+        with open(self.paths.output_dir / 'metrics.json', 'w') as f:
+            json.dump(metrics, f)
 
 
     def denormalize(self):
@@ -426,72 +444,7 @@ class Reconstructor:
         self.vertices_optimizer = torch.optim.Adam([self.vertex_offsets], lr=self.vertices_lr)
         print(f"recovering at iteration {self.iteration}")
 
+
 def reconstruct(args, device):
     reconstructor = Reconstructor(args, device)
     reconstructor.run_to_completion(args.iterations)
-
-if __name__ == '__main__':
-    parser = ArgumentParser(description='Multi-View Mesh Reconstruction with Neural Deferred Shading', formatter_class=ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--input_dir', type=Path, default="./data", help="Path to the input data")
-    parser.add_argument('--input_bbox', type=Path, default=None, help="Path to the input bounding box. If None, it is computed from the input mesh")
-    parser.add_argument('--train_pose', action="store_true", help="whether to train camera poses")
-    parser.add_argument('--output_dir', type=Path, default="./out", help="Path to the output directory")
-    parser.add_argument('--gt_points', type=Path, default=None, help="Path to the ground truth  points directory")
-    parser.add_argument('--gt_masks', type=Path, default=None, help="Path to the ground truth masks")
-    parser.add_argument('--initial_mesh', type=str, default="vh32", help="Initial mesh, either a path or one of [vh16, vh32, vh64, sphere16]")
-    parser.add_argument('--image_scale', type=int, default=1, help="Scale applied to the input images. The factor is 1/image_scale, so image_scale=2 halves the image size")
-    parser.add_argument("--timeout", type=int, default=1200, help="timeout for 1000 iterations to restart")
-    parser.add_argument('--iterations', type=int, default=2000, help="Total number of iterations")
-    parser.add_argument('--run_name', type=str, default=None, help="Name of this run")
-    parser.add_argument('--lr_vertices', type=float, default=1e-3, help="Step size/learning rate for the vertex positions")
-    parser.add_argument('--lr_shader', type=float, default=1e-3, help="Step size/learning rate for the shader parameters")
-    parser.add_argument('--lr_pose', type=float, default=1e-3, help="Step size/learning rate for learning camera poses")
-    parser.add_argument('--upsample_iterations', type=int, nargs='+', default=[500, 1000, 1500], help="Iterations at which to perform mesh upsampling")
-    parser.add_argument('--rebuild_iterations', type=int, nargs='+',default=[500, 1000, 1500], help="Iterations at which to perform mesh upsampling")
-    parser.add_argument('--save_frequency', type=int, default=100, help="Frequency of mesh and shader saving (in iterations)")
-    parser.add_argument('--visualization_frequency', type=int, default=100, help="Frequency of shader visualization (in iterations)")
-    parser.add_argument('--visualization_views', type=int, nargs='+', default=[], help="Views to use for visualization. By default, a random view is selected each time")
-    parser.add_argument('--device', type=int, default=0, choices=([-1] + list(range(torch.cuda.device_count()))), help="GPU to use; -1 is CPU")
-    parser.add_argument('--weight_mask', type=float, default=2.0, help="Weight of the mask term")
-    parser.add_argument('--weight_normal', type=float, default=0.1, help="Weight of the normal term")
-    parser.add_argument('--weight_laplacian', type=float, default=40.0, help="Weight of the laplacian term")
-    parser.add_argument('--weight_shading', type=float, default=1.0, help="Weight of the shading term")
-    parser.add_argument('--shading_percentage', type=float, default=0.75, help="Percentage of valid pixels considered in the shading loss (0-1)")
-    parser.add_argument('--hidden_features_layers', type=int, default=3, help="Number of hidden layers in the positional feature part of the neural shader")
-    parser.add_argument('--hidden_features_size', type=int, default=256, help="Width of the hidden layers in the neural shader")
-    parser.add_argument('--fourier_features', type=str, default='positional', choices=(['none', 'gfft', 'positional']), help="Input encoding used in the neural shader")
-    parser.add_argument('--activation', type=str, default='relu', choices=(['relu', 'sine']), help="Activation function used in the neural shader")
-    parser.add_argument('--fft_scale', type=int, default=4, help="Scale parameter of frequency-based input encodings in the neural shader")
-
-    # Add module arguments
-    ViewSampler.add_arguments(parser)
-
-    args = parser.parse_args()
-
-    # Select the device
-    device = torch.device('cpu')
-    if torch.cuda.is_available() and args.device >= 0:
-        device = torch.device(f'cuda:{args.device}')
-    print(f"Using device {device}")
-    mp.set_start_method("spawn")
-    recover=True
-    reconstruct(args, device)
-    # while True:
-    #     try:
-    #         print("running job!")
-    #         training_job = mp.Process(target=reconstruct, args=(args, device))
-    #         training_job.daemon = True
-    #         training_job.start()
-    #         print(f"timer set to {args.timeout // args.image_scale}")
-    #         training_job.join(timeout=(args.timeout // args.image_scale))
-    #         if training_job.is_alive():
-    #             print("timeout's reached!, rerunning!")
-    #             training_job.terminate()
-    #         break
-    #     except KeyboardInterrupt:
-    #         sys.exit()
-
-
-
-
-

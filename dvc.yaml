@@ -57,5 +57,15 @@ stages:
       - data/dtu-idr/:
           persist: true
 
-
-
+  run-eval:
+    cmd:
+      - python ./run_experiment.py
+    deps:
+      - ./data/dtu-nds
+      - ./data/ObsMask
+      - ./data/Points
+    outs:
+      - ./out/${run.run_name}:
+          cache: False
+    metrics:
+      - ./out/metrics.json

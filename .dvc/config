@@ -1,0 +1,4 @@
+[hydra]
+    enabled = True
+    config_dir = conf
+    config_name = config.yaml

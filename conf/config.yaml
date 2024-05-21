@@ -1,14 +1,4 @@
-hydra:
-  run:
-    dir: .
-  job:
-    chdir: False
-  output_subdir: null
-
 defaults:
-  - _self_
-  - paths : default
+  - paths : base_paths
   - params: base_model
   - run: base_run
-  - override hydra/hydra_logging: none
-  - override hydra/job_logging: none

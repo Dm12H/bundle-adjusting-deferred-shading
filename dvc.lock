@@ -84,3 +84,32 @@ stages:
       md5: 072f5123da673e1f2c846e1cc60e5568.dir
       size: 433569
       nfiles: 2580
+  run-eval:
+    cmd:
+    - python ./run_experiment.py
+    deps:
+    - path: ./data/ObsMask
+      hash: md5
+      md5: 7fd0444fddee08109ebc9fe594e61e85.dir
+      size: 139850127
+      nfiles: 204
+    - path: ./data/Points
+      hash: md5
+      md5: 3629973c91f808ae534c45454f2caa40.dir
+      size: 12488383411
+      nfiles: 124
+    - path: ./data/dtu-nds
+      hash: md5
+      md5: f92cf3cc845f8f03adbcd9906535eaef.dir
+      size: 2435267973
+      nfiles: 3634
+    outs:
+    - path: ./out/106_birds
+      hash: md5
+      md5: f5750e420c3fc1013b41a197c9bb3756.dir
+      size: 59266529
+      nfiles: 86
+    - path: ./out/metrics.json
+      hash: md5
+      md5: ff4582e217a334e705e1cab530e49905
+      size: 87

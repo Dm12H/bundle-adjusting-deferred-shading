@@ -9,7 +9,7 @@ def psnr_metric(view, rec_im):
     """
     Evaluates average PSNR for all views of the model
     Args:
-        views: iterable of Views representing images taken from multiple cameras
+        view: view representing images taken from multiple cameras
         model: reconstruction model with trained shader and mesh
 
     Returns: float
@@ -31,30 +31,33 @@ def psnr_metric(view, rec_im):
     psnr = (20 * np.log10(1. / np.sqrt(mse)))
     return psnr
 
-def ssim_metric(views, model):
+
+def ssim_metric(view, rec_im):
     """
         Evaluates average SSIM for all views of the model
     Args:
-        views: iterable of Views representing images taken from multiple cameras
+        view: a view representing images taken from multiple cameras
         model: reconstruction model with trained shader and mesh
 
     Returns: float
 
     """
 
-    ssim = []
-    for view in views:
-        gt_im = view.color.cpu().numpy().astype(np.float64) / 255
-        mask = view.mask.cpu().numpy().astype(np.float64)
-        rec_im, *_ = model.render_view
-        rec_im = rec_im.cpu().numpy().astype(np.float64) / 255
-        gt_masked = gt_im * (mask > 0)
-        rec_masked = rec_im * (mask > 0)
-        ssim_full = structural_similarity(gt_masked, rec_masked, full=True)
-        ssim_full_masked = ssim_full * (mask > 0)
-        ssim_mean = np.sum(ssim_full_masked) / np.sum(mask > 0)
-        ssim.append(ssim_mean)
-    return np.mean(ssim)
+    gt_im = view.color.cpu().numpy().astype(np.float64)
+    mask = view.mask.cpu().numpy().astype(np.float64)
+    rec_im = rec_im.cpu().numpy().astype(np.float64)
+    gt_masked = gt_im * (mask > 0).astype(np.float64)
+    rec_masked = rec_im * (mask > 0).astype(np.float64)
+    *_, ssim_full = structural_similarity(
+        gt_masked,
+        rec_masked,
+        full=True,
+        data_range=1.0,
+        channel_axis=2
+    )
+    ssim_full_masked = ssim_full * (mask > 0)
+    ssim_mean = np.sum(ssim_full_masked) / np.sum(mask > 0)
+    return ssim_mean
 
 
 def prepare_pcl(mesh, gt_cloud, mask_mat, ground_plane):
