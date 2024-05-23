@@ -143,7 +143,6 @@ class Reconstructor:
             approx=self.params.train_pose)
         return views
 
-
     def load_mesh(self, views, bbox):
         # Obtain the initial mesh and compute its connectivity
         if self.params.initial_mesh in mesh_generator_names:
@@ -190,7 +189,6 @@ class Reconstructor:
         self.mesh_initial = normalizer.normalize_mesh(self.mesh_initial)
         self.bbox = normalizer.normalize_aabb(self.bbox)
 
-
     def reconstruction_step(self):
 
         mesh = self.mesh_initial.with_vertices(
@@ -199,6 +197,7 @@ class Reconstructor:
 
         # Sample a view subset
         views_subset, idx_subset = self.view_sampler(self.views)
+        views_subset = [view.to(self.device) for view in views_subset]
 
         # Replace camera position with learnable params
         if self.params.train_pose:
@@ -298,7 +297,7 @@ class Reconstructor:
 
     def render_view(self, view):
         gbuffer = self.renderer.render(
-            [view],
+            [view.to(self.device)],
             self.mesh,
             channels=['mask', 'position', 'normal'],
             with_antialiasing=True)[0]
@@ -312,15 +311,15 @@ class Reconstructor:
         return shaded_image, mask, normal
 
     def visualize(self):
-        with (torch.no_grad()):
+        with torch.no_grad():
             use_fixed_views = len(self.run_params.visualization_views) > 0
             if use_fixed_views:
                 view_indices = self.run_params.visualization_views
             else:
-                view_indices=[np.random.choice(list(range(len(self.views))))]
+                view_indices = [np.random.choice(list(range(len(self.views))))]
             vi_psnr = []
             for vi in view_indices:
-                debug_view = self.views[vi]
+                debug_view = self.views[vi].to(self.device)
                 shaded_image, mask, normal = self.render_view(debug_view)
                 # Save the shaded rendering
                 shaded_image = shaded_image * mask + (1 - mask)
@@ -388,7 +387,7 @@ class Reconstructor:
         ssim_views = []
         with torch.no_grad():
             for view in self.views:
-                shaded_image, *_ = self.render_view(view)
+                shaded_image, *_ = self.render_view(view.to(self.device))
                 psnr_views.append(psnr_metric(view, shaded_image))
                 ssim_views.append(ssim_metric(view, shaded_image))
         metrics["SSIM"] = np.mean(ssim_views)

@@ -6,6 +6,7 @@ import torch
 
 from nds.core import Camera
 
+
 class View:
     """ A View is a combination of camera and image(s).
 
@@ -17,8 +18,8 @@ class View:
     """
 
     def __init__(self, color, mask, camera, device='cpu'):
-        self.color = color.to(device)
-        self.mask = mask.to(device)
+        self.color = color
+        self.mask = mask
         self.camera = camera.to(device)
         self.device = device
 
@@ -59,11 +60,10 @@ class View:
         return cls(color, mask, camera, device=device)
 
     def to(self, device: str = "cpu"):
-        self.color = self.color.to(device)
-        self.mask = self.mask.to(device)
-        self.camera = self.camera.to(device)
-        self.device = device
-        return self
+        color = self.color.to(device)
+        mask = self.mask.to(device)
+        camera = self.camera.to(device)
+        return type(self)(color, mask, camera, device)
 
     @property
     def resolution(self):
@@ -85,8 +85,8 @@ class View:
         scale_x = scaled_width / self.color.shape[1]
         scale_y = scaled_height / self.color.shape[0]
         
-        self.color = torch.FloatTensor(cv2.resize(self.color.cpu().numpy(), dsize=(scaled_width, scaled_height), interpolation=cv2.INTER_LINEAR)).to(self.device)
-        self.mask = torch.FloatTensor(cv2.resize(self.mask.cpu().numpy(), dsize=(scaled_width, scaled_height), interpolation=cv2.INTER_NEAREST)).to(self.device)
+        self.color = torch.FloatTensor(cv2.resize(self.color.cpu().numpy(), dsize=(scaled_width, scaled_height), interpolation=cv2.INTER_LINEAR))
+        self.mask = torch.FloatTensor(cv2.resize(self.mask.cpu().numpy(), dsize=(scaled_width, scaled_height), interpolation=cv2.INTER_NEAREST))
         self.mask = self.mask.unsqueeze(-1) # Make sure the mask is HxWx1
 
         self.camera.K = torch.FloatTensor(np.diag([scale_x, scale_y, 1])).to(self.device) @ self.camera.K  

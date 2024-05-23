@@ -5,6 +5,7 @@ from typing import List
 from nds.core import Mesh, View
 from nds.utils.geometry import AABB, normalize_aabb
 
+
 class SpaceNormalization:
     def __init__(self, points_3d):
         self.aabb = AABB(points_3d.cpu().numpy() if torch.is_tensor(points_3d) else points_3d)

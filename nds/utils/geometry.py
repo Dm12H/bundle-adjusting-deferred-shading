@@ -226,6 +226,7 @@ def compute_visual_hull(views, aabb: AABB, grid_size, device, return_voxel_grid=
 
     visibility_mask = torch.zeros_like(voxels[..., 0], dtype=torch.bool)
     for view in views:
+        view = view.to(view.device)
         voxels_projected = view.project(voxels)
         visibility_mask_current = (voxels_projected[..., 0] >= 0) & (voxels_projected[..., 0] < view.resolution[1]) & (voxels_projected[..., 1] >= 0) & (voxels_projected[..., 1] < view.resolution[0]) & (voxels_projected[..., 2] > 0)
         visibility_mask |= visibility_mask_current
