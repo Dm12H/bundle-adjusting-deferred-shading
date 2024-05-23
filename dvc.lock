@@ -100,16 +100,16 @@ stages:
       nfiles: 124
     - path: ./data/dtu-nds
       hash: md5
-      md5: f92cf3cc845f8f03adbcd9906535eaef.dir
-      size: 2435267973
-      nfiles: 3634
+      md5: 578c825cc564013e7310570bf5c72926.dir
+      size: 2434714305
+      nfiles: 3435
     outs:
-    - path: ./out/106_birds
+    - path: ./out/118_angel
       hash: md5
-      md5: f5750e420c3fc1013b41a197c9bb3756.dir
-      size: 59266529
-      nfiles: 86
-    - path: ./out/metrics.json
+      md5: 4f9e741742f33932283c4c88ae716422.dir
+      size: 80800579
+      nfiles: 106
+    - path: metrics.json
       hash: md5
-      md5: ff4582e217a334e705e1cab530e49905
-      size: 87
+      md5: b4b8dbfbea0394f9525b63892ddbaa23
+      size: 198
