@@ -1,5 +1,6 @@
 import re
 import sys
+import time
 import json
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import matplotlib.pyplot as plt
@@ -361,6 +362,7 @@ class Reconstructor:
         self.shader.save(self.shaders_save_path / f'shader_{self.iteration:06d}.pt')
 
     def run_to_completion(self, total=None):
+        start_time = time.time()
         if total is None:
             total = self.run_params.iterations
         progress_bar = tqdm(range(self.iteration, total + 1))
@@ -397,6 +399,8 @@ class Reconstructor:
             self.space_normalization)
         metrics["CAM_POS_ERR"] = pos_err
         metrics["CAM_DIR_ERR"] = dir_err
+        end_time = time.time()
+        metrics["TIME_ELAPSED"] = end_time - start_time
         if self.gt_points is not None and self.gt_masks is not None:
             self.denormalize()
             denorm_mesh = self.space_normalization.denormalize_mesh(
