@@ -11,12 +11,16 @@ def run_multiple():
         cur_obj = dtu_objects[idx]
         try:
             subprocess.run(
-                ["dvc", "exp", "run",
+                ["dvc", "exp", "run", "-f",
+                 "--downstream", "run-eval",
                  "--name", cur_obj,
-                 "-S", f"run.run_name={cur_obj}"],
-                timeout=1000)
+                 "-S", f"run.run_name={cur_obj}",
+                 "-S", "run.image_scale=2",
+                 "-S", "run.iterations=2500"],
+                timeout=400)
         except subprocess.TimeoutExpired:
             print(f"Had to stop exp {cur_obj}, rerunning")
+            continue
         idx += 1
 
 

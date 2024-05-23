@@ -109,9 +109,10 @@ def prepare_pcl(mesh, gt_cloud, mask_mat, ground_plane):
     return masked_cloud, eval_cloud
 
 
-def chamfer_dist(gt_cloud, eval_cloud):
+def chamfer_dist(gt_cloud, eval_cloud, max_dist=10):
     mesh_to_pcl_dist = np.asarray(gt_cloud.compute_point_cloud_distance(eval_cloud))
-    mean_dist = np.mean(mesh_to_pcl_dist)
+    within_max_dist = mesh_to_pcl_dist < max_dist
+    mean_dist = np.mean(mesh_to_pcl_dist[within_max_dist])
     return mean_dist
 
 
