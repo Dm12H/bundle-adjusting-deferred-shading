@@ -12,7 +12,8 @@ class SpaceNormalization:
     
     def normalize_views(self, views: List[View]):
         for view in views:
-            view.transform(self.A, self.A_inv)
+            k, r, t = view.transform(self.A, self.A_inv)
+            view.set_params(k, r, t)
         return views
     
     def normalize_mesh(self, mesh: Mesh):
@@ -28,4 +29,5 @@ class SpaceNormalization:
 
     def denormalize_views(self, views: List[View]):
         for view in views:
-            view.transform(self.A_inv, self.A)
+            k, r, t = view.transform(self.A_inv, self.A)
+            view.set_params(k, r, t)

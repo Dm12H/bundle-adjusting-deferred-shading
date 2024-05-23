@@ -65,7 +65,6 @@ stages:
       - ./data/ObsMask
       - ./data/Points
     outs:
-      - ./out/${run.run_name}:
-          cache: False
+      - ./out/${run.run_name}
     metrics:
-      - ./out/metrics.json
+      - metrics.json

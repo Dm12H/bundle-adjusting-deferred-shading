@@ -28,9 +28,9 @@ from nds.utils import (
     AABB, read_views, read_mesh, write_mesh, visualize_views, generate_mesh, mesh_generator_names, get_pose_init, quat_to_rot
 )
 
-from evaluation.vis import vis_cameras, draw_pcd, pcl_chamfer_color
+from evaluation.vis import vis_cameras
 from evaluation.metrics import (
-    prepare_pcl, chamfer_dist, psnr_metric, camera_est_errors, ssim_metric
+    prepare_pcl, chamfer_dist, psnr_metric, mean_cam_est_err, ssim_metric
 )
 
 
@@ -157,7 +157,7 @@ class Reconstructor:
                 device=self.device)
         else:
             # Use args.initial_mesh as path to the mesh
-            mesh = read_mesh(args.initial_mesh_name, device=device)
+            mesh = read_mesh(self.params.initial_mesh, device=self.device)
         mesh.compute_connectivity()
         return mesh
 
@@ -249,15 +249,10 @@ class Reconstructor:
         for optimizer in self.optimizers:
             optimizer.step()
         self.mesh = mesh
+        dir_err, pos_err = mean_cam_est_err(self.views, self.space_normalization)
 
-        # record camera pose errors
-        dir_errors, pos_errors = [], []
-        for view in self.views:
-            angle_err, pos_err = camera_est_errors(view)
-            dir_errors.append(angle_err)
-            pos_errors.append(pos_err)
-        self.summary.add_scalar("Cameras/direction_err", np.mean(dir_errors), self.iteration)
-        self.summary.add_scalar("Cameras/position_err", np.mean(pos_errors), self.iteration)
+        self.summary.add_scalar("Cameras/direction_err", dir_err, self.iteration)
+        self.summary.add_scalar("Cameras/position_err", pos_err, self.iteration)
         return loss.detach().cpu()
 
     def upsample_mesh(self):
@@ -358,8 +353,6 @@ class Reconstructor:
 
             self.summary.add_scalar("Errors/PSNR", np.mean(vi_psnr), self.iteration)
 
-
-
     def save_mesh(self):
         with torch.no_grad():
             mesh_for_writing = self.space_normalization.denormalize_mesh(
@@ -400,6 +393,11 @@ class Reconstructor:
                 ssim_views.append(ssim_metric(view, shaded_image))
         metrics["SSIM"] = np.mean(ssim_views)
         metrics["PSNR"] = np.mean(psnr_views)
+        dir_err, pos_err = mean_cam_est_err(
+            self.views,
+            self.space_normalization)
+        metrics["CAM_POS_ERR"] = pos_err
+        metrics["CAM_DIR_ERR"] = dir_err
         if self.gt_points is not None and self.gt_masks is not None:
             self.denormalize()
             denorm_mesh = self.space_normalization.denormalize_mesh(
@@ -407,17 +405,8 @@ class Reconstructor:
             )
             gt_cloud, eval_cloud = prepare_pcl(
                 denorm_mesh, self.gt_points, self.gt_masks, self.gt_ground)
-            metrics["Chamfer"] = chamfer_dist(gt_cloud, eval_cloud)
-            colored_cloud = pcl_chamfer_color(gt_cloud, eval_cloud)
-            # view 31 has a good viewing angle with minor correction
-            full_out_path = self.exp_dir / "chamfer_vis.png"
-            draw_pcd(
-                colored_cloud,
-                self.views[32],
-                full_out_path.absolute().as_posix(),
-                y_correction=5,
-                scale=self.run_params.image_scale)
-        for path in (self.paths.output_dir, self.exp_dir):
+            metrics["CHAMFER"] = chamfer_dist(gt_cloud, eval_cloud)
+        for path in (Path.cwd(), self.exp_dir):
             with open(path / 'metrics.json', 'w') as f:
                 json.dump(metrics, f)
 

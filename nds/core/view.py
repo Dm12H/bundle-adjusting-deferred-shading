@@ -126,8 +126,11 @@ class View:
         t = - R @ c
 
         # ensure unique scaling of K matrix
-        K = K / K[2,2]
-        
+        K = K / K[2, 2]
+
+        return K, R, t
+
+    def set_params(self, K, R, t):
         self.camera.K = torch.from_numpy(K).to(self.device)
         self.camera.R = torch.from_numpy(R).to(self.device)
         self.camera.t = torch.from_numpy(t).to(self.device)

@@ -30,9 +30,9 @@ class Camera:
     def center(self):
         return -self.R.t() @ self.t
 
-    @property
-    def center_gt(self):
-        return -self.R_gt.T @ self.t_gt
+    @staticmethod
+    def center_general(R, t):
+        return -R.T @ t
 
     @property
     def P(self):
@@ -50,21 +50,13 @@ class Camera:
     def Rt(self):
         return torch.cat([self.R, self.t.unsqueeze(-1)], dim=-1)
 
-    @property
-    def true_look_dir(self):
+    @staticmethod
+    def look_dir(R):
         with torch.no_grad():
 
             view_dir_cam = np.array([0, 0, -1],
                                         dtype=np.float64)
-            return self.R_gt.dot(view_dir_cam)
-
-    @property
-    def look_dir(self):
-        with torch.no_grad():
-            view_dir_cam = torch.tensor([0, 0, -1],
-                                        dtype=torch.float).to(self.device)
-            vec = self.R @ (torch.unsqueeze(view_dir_cam, dim=1))
-            return torch.squeeze(vec)
+            return R.dot(view_dir_cam)
 
     @property
     def intinsics(self):

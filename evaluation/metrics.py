@@ -56,7 +56,8 @@ def ssim_metric(view, rec_im):
         channel_axis=2
     )
     ssim_full_masked = ssim_full * (mask > 0)
-    ssim_mean = np.sum(ssim_full_masked) / np.sum(mask > 0)
+    ssimm_per_channel = np.mean(ssim_full_masked, axis=2)
+    ssim_mean = np.sum(ssimm_per_channel) / np.sum(mask)
     return ssim_mean
 
 
@@ -107,31 +108,43 @@ def prepare_pcl(mesh, gt_cloud, mask_mat, ground_plane):
 
     return masked_cloud, eval_cloud
 
+
 def chamfer_dist(gt_cloud, eval_cloud):
     mesh_to_pcl_dist = np.asarray(gt_cloud.compute_point_cloud_distance(eval_cloud))
     mean_dist = np.mean(mesh_to_pcl_dist)
     return mean_dist
 
 
-def camera_est_errors(view):
+def camera_est_errors(view, normalizer):
 
     camera = view.camera
+    K_cur, R_cur, t_cur = view.transform(normalizer.A_inv, normalizer.A)
 
     # calculate degree disparity
-    view_direction = camera.look_dir.cpu().numpy()
-    view_direction = np.squeeze(view_direction)
+    view_direction = np.squeeze(camera.look_dir(R_cur))
     view_direction = view_direction / np.linalg.norm(view_direction)
 
-    gt_view_direction = np.squeeze(camera.true_look_dir)
+    gt_view_direction = np.squeeze(camera.look_dir(camera.R_gt))
     gt_view_direction = gt_view_direction / np.linalg.norm(gt_view_direction)
 
-    dot = np.clip(view_direction.dot(gt_view_direction), a_min=0, a_max= 1)
+    dot = np.clip(view_direction.dot(gt_view_direction), a_min=0, a_max=1)
     angle_rad = np.abs(np.arccos(dot))
     angle_deg = 180 * angle_rad / np.pi
 
     # calculate distance disparity
-    camera_pos = camera.center.cpu().numpy()
-    camera_pos_gt = camera.center_gt
-    dist = np.sqrt(np.sum(camera_pos - camera_pos_gt) ** 2)
+    camera_pos = camera.center_general(R_cur, t_cur)
+    camera_pos_gt = camera.center_general(camera.R_gt, camera.t_gt)
+    dist = np.sqrt(np.sum((camera_pos - camera_pos_gt) ** 2))
     return angle_deg, dist
 
+
+def mean_cam_est_err(views, normalizer):
+    # record camera pose errors
+    dir_errors, pos_errors = [], []
+    for view in views:
+        angle_err, pos_err = camera_est_errors(view, normalizer)
+        dir_errors.append(angle_err)
+        pos_errors.append(pos_err)
+    mdir_error = np.mean(dir_errors)
+    mpos_error = np.mean(pos_errors)
+    return mdir_error, mpos_error
