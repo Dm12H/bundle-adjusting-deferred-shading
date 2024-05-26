@@ -16,6 +16,7 @@ def run_multiple():
                  "--downstream", "run-eval",
                  "--name", f"err_{cur_err:.01f}",
                  "-S", f"run.run_name=114_buddha",
+                 "-S", "paths.output_dir=./out/P_err_exp",
                  "-S", f"run.perturbs.pos={cur_err}",
                  "-S", f"run.perturbs.dir={cur_err}",
                  "-S", f"run.subdir_name=err_{cur_err:.01f}",
