@@ -67,3 +67,44 @@ class Camera:
         cx = intrinsic_mat[0, 2]
         cy = intrinsic_mat[1, 2]
         return fx, fy, cx, cy
+
+    def perturb_lookat(self, err: float):
+
+        # sample a new lookat direction
+        err_angle = err * np.pi / 180
+        cone_r = np.tan(err_angle)
+        r = cone_r * np.sqrt(np.random.random())
+        angle = np.random.random() * 2 * np.pi
+        u = r * np.cos(angle)
+        v = r * np.sin(angle)
+        new_lookat = np.array([u, v, -1], dtype=np.float64)
+        unit_lookat = new_lookat / np.linalg.norm(new_lookat)
+
+        # get rotation matrix from 2 vectors
+        old_lookat = np.array([0, 0, -1], dtype=np.float64)
+        cross = np.cross(old_lookat, unit_lookat)
+        cos = np.dot(old_lookat, unit_lookat)
+        U = np.array([[0, -cross[2], cross[1]],
+                      [cross[2], 0, -cross[0]],
+                      [-cross[1], cross[0], 0]])
+        Usq = U.dot(U)
+        R = np.identity(3) + U + (1 / 1 + cos) * Usq
+
+        # apply new rotation angle
+        R_tens = torch.from_numpy(R).to(self.device)
+        self.R = R_tens.t() @ self.R
+
+    def perturb_position(self, err,  bbox_center):
+        cam_center = self.center.cpu().numpy()
+        dist = np.sqrt(np.sum((cam_center - bbox_center) ** 2))
+        shift_vec = np.random.normal(size=3)
+        unit_shift = shift_vec / np.linalg.norm(shift_vec)
+        percent_err = err / 100
+        final_shift = dist * percent_err * unit_shift
+
+        shift_t = torch.from_numpy(final_shift).to(self.device)
+        self.t = shift_t + self.t
+
+
+
+

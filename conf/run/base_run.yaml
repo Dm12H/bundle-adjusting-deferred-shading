@@ -1,4 +1,5 @@
 run_name: null
+subdir_name: null
 iterations: 2000
 upsample_iterations: [500, 1000, 1500]
 rebuild_iterations: [500, 1000, 1500]
@@ -7,3 +8,6 @@ visualization_frequency: 100
 image_scale: 1
 device: 0
 visualization_views: []
+perturbs:
+  pos: 0.1
+  dir: 0.1

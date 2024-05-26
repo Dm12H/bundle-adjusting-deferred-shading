@@ -48,14 +48,17 @@ class Reconstructor:
         self.device = device
 
         if cfg.run.run_name is not None:
-            run_name = cfg.run.run_name
-            self.run_name = run_name
+            subdir = cfg.run.run_name
+            self.run_name = subdir
         else:
             raise ValueError("run_name is expected")
 
+        if cfg.run.subdir_name is not None:
+            subdir = cfg.run.subdir_name
+
         self.views = self.load_views()
         self.bbox = self.load_bbox(
-            self.paths.input_bbox / run_name / "bbox.txt",
+            self.paths.input_bbox / self.run_name / "bbox.txt",
             self.params.initial_mesh)
         self.mesh_initial = self.load_mesh(self.views, self.bbox)
         # Create the optimizer for the neural shader
@@ -77,6 +80,16 @@ class Reconstructor:
             "shading": self.params.loss_weights.weight_shading
         }
         self.space_normalization = SpaceNormalization(self.bbox.corners)
+
+        if self.run_params.perturbs is not None:
+            bbox_center = self.bbox.center
+            for view in self.views:
+                view.camera.perturb_position(
+                    self.run_params.perturbs.pos, bbox_center
+                )
+                view.camera.perturb_lookat(
+                    self.run_params.perturbs.dir
+                )
 
         self._normalize_views()
         self.mesh = self.mesh_initial
@@ -103,9 +116,9 @@ class Reconstructor:
 
         # Set up save paths
 
-        experiment_dir = cfg.paths.output_dir / run_name
+        experiment_dir = cfg.paths.output_dir / subdir
         self.exp_dir = experiment_dir
-        self.id = int(re.match(r"\d+", run_name).group())
+        self.id = int(re.match(r"\d+", subdir).group())
 
         self.images_save_path = experiment_dir / "images"
         self.meshes_save_path = experiment_dir / "meshes"
