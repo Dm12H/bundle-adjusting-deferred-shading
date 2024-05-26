@@ -77,11 +77,11 @@ class Camera:
         angle = np.random.random() * 2 * np.pi
         u = r * np.cos(angle)
         v = r * np.sin(angle)
-        new_lookat = np.array([u, v, -1], dtype=np.float64)
+        new_lookat = np.array([u, v, -1], dtype=np.float32)
         unit_lookat = new_lookat / np.linalg.norm(new_lookat)
 
         # get rotation matrix from 2 vectors
-        old_lookat = np.array([0, 0, -1], dtype=np.float64)
+        old_lookat = np.array([0, 0, -1], dtype=np.float32)
         cross = np.cross(old_lookat, unit_lookat)
         cos = np.dot(old_lookat, unit_lookat)
         U = np.array([[0, -cross[2], cross[1]],
@@ -91,7 +91,7 @@ class Camera:
         R = np.identity(3) + U + (1 / 1 + cos) * Usq
 
         # apply new rotation angle
-        R_tens = torch.from_numpy(R).to(self.device)
+        R_tens = torch.from_numpy(R).to(torch.float).to(self.device)
         self.R = R_tens.t() @ self.R
 
     def perturb_position(self, err,  bbox_center):
@@ -102,7 +102,7 @@ class Camera:
         percent_err = err / 100
         final_shift = dist * percent_err * unit_shift
 
-        shift_t = torch.from_numpy(final_shift).to(self.device)
+        shift_t = torch.from_numpy(final_shift).to(torch.float).to(self.device)
         self.t = shift_t + self.t
 
 
