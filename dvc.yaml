@@ -64,7 +64,5 @@ stages:
       - ./data/dtu-nds
       - ./data/ObsMask
       - ./data/Points
-    outs:
-      - ./out/${run.run_name}
     metrics:
       - metrics.json
