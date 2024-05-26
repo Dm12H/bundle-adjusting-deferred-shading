@@ -65,6 +65,6 @@ stages:
       - ./data/ObsMask
       - ./data/Points
     outs:
-      - ./out/${run.run_name}
+      - ./${paths.output_dir}/${run.run_name}
     metrics:
       - metrics.json

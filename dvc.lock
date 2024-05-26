@@ -104,7 +104,7 @@ stages:
       size: 2434714305
       nfiles: 3435
     outs:
-    - path: ./out/118_angel
+    - path: ././out/base_nds//118_angel
       hash: md5
       md5: 4f9e741742f33932283c4c88ae716422.dir
       size: 80800579

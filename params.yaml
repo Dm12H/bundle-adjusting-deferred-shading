@@ -1,7 +1,7 @@
 paths:
   input_dir: data/dtu-nds/
   input_bbox: data/dtu-nds/
-  output_dir: ./out
+  output_dir: ./out/base_nds/
   gt_points: data/Points
   gt_masks: data/ObsMask
 params:

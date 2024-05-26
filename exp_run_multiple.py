@@ -14,6 +14,7 @@ def run_multiple():
                 ["dvc", "exp", "run", "-f",
                  "--downstream", "run-eval",
                  "--name", cur_obj,
+                 "-S", "paths.output_dir=./out/base_nds"
                  "-S", f"run.run_name={cur_obj}",
                  "-S", "run.image_scale=2",
                  "-S", "run.iterations=2500"],
