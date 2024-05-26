@@ -118,7 +118,7 @@ class Reconstructor:
 
         experiment_dir = cfg.paths.output_dir / subdir
         self.exp_dir = experiment_dir
-        self.id = int(re.match(r"\d+", subdir).group())
+        self.id = int(re.match(r"\d+", self.run_name).group())
 
         self.images_save_path = experiment_dir / "images"
         self.meshes_save_path = experiment_dir / "meshes"
