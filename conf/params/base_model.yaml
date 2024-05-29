@@ -1,5 +1,5 @@
 initial_mesh: vh32
-train_pose: false
+train_pose: true
 lrs:
   lr_vertices: 1.0e-3
   lr_shader: 1.0e-3

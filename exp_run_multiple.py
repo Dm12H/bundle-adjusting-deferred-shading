@@ -23,14 +23,9 @@ def run_multiple():
                  "--downstream", "run-eval",
                  "--name", f"its_{num_its}",
                  "-S", f"run.run_name=114_buddha",
-                 "-S", "run.perturbs.pos=15",
-                 "-S", "run.perturbs.dir=15",
                  "-S", f"run.subdir_name=its_{num_its}",
                  "-S", "run.run_name=114_buddha",
-                 "-S", "run.image_scale=2",
                  "-S", f"run.upsample_iterations={upsamples}",
-                 "-S", f"run.rebuild_iterations={[]}",
-                 "-S", "run.image_scale=2",
                  "-S", f"run.iterations={num_its}"],
                 timeout=1000)
         except subprocess.TimeoutExpired:
