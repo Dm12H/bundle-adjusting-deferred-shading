@@ -153,8 +153,7 @@ class Reconstructor:
         views = read_views(
             self.paths.input_dir / self.run_name / "views",
             scale=self.run_params.image_scale,
-            device=self.device,
-            approx=self.params.train_pose)
+            device=self.device)
         return views
 
     def load_mesh(self, views, bbox):

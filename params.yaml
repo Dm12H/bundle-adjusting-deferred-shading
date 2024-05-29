@@ -1,0 +1,42 @@
+paths:
+  input_dir: data/dtu-nds/
+  input_bbox: data/dtu-nds/
+  output_dir: ./out
+  gt_points: data/Points
+  gt_masks: data/ObsMask
+params:
+  initial_mesh: vh32
+  train_pose: true
+  lrs:
+    lr_vertices: 0.001
+    lr_shader: 0.001
+    lr_pose: 0.001
+  loss_weights:
+    weight_mask: 2.0
+    weight_normal: 0.1
+    weight_laplacian: 40.0
+    weight_shading: 1.0
+  shader:
+    shading_percentage: 0.75
+    hidden_features_layers: 3
+    hidden_features_size: 256
+    fourier_features: positional
+    activation: relu
+    fft_scale: 4
+  view_sampler:
+    view_sampling_mode: random
+    views_per_iter: 1
+run:
+  run_name: 114_buddha
+  subdir_name: its_500
+  iterations: 500
+  upsample_iterations: []
+  rebuild_iterations: []
+  save_frequency: 100
+  visualization_frequency: 100
+  image_scale: 2
+  device: 0
+  visualization_views: []
+  perturbs:
+    pos: 15
+    dir: 15

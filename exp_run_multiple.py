@@ -10,9 +10,8 @@ def run_multiple():
     it_exps = []
     it_upsaples = []
     for its in range(2500, 5000, 500):
-        ups_start_point = its - 2000
-        upsample_list = list(range(ups_start_point, ups_start_point, 500))
-        it_exps.append(ups_start_point)
+        upsample_list = list(range(its - 2000, its-500, 500))
+        it_exps.append(its)
         it_upsaples.append(upsample_list)
     while idx < len(it_exps):
         num_its = it_exps[idx]
