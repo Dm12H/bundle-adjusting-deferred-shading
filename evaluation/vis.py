@@ -13,14 +13,14 @@ def get_camera_mesh(scale=1):
     wireframe = vertices[[0,1,2,3,0,4,1,2,4,3]]
     return wireframe
 
-def vis_cameras(views, out_path, colors=("blue","magenta")):
-    fig, ax = plt.subplots(figsize=(20,20), subplot_kw={"projection": "3d"})
+
+def vis_cameras(views, normalizer, out_path, colors=("blue", "magenta")):
+    fig, ax = plt.subplots(figsize=(20, 20), subplot_kw={"projection": "3d"})
     cam_mesh = get_camera_mesh(scale=50)
     color_gt, color_est = colors
     for view in views:
         cam = view.camera
-        R = cam.R.cpu().numpy()
-        t = cam.t.cpu().numpy()
+        _, R, t = view.transform(normalizer.A_inv, normalizer.A)
         R_gt = cam.R_gt
         t_gt = cam.t_gt
 
@@ -28,7 +28,7 @@ def vis_cameras(views, out_path, colors=("blue","magenta")):
         cam_est = R.T @ (cam_mesh - t).T
 
         x_gt, z_gt, y_gt = np.split(cam_gt,3, axis=0)
-        x, z, y  = np.split(cam_est, 3, axis=0)
+        x, z, y = np.split(cam_est, 3, axis=0)
 
         dist = np.sqrt(np.sum((cam_gt - cam_est) ** 2, axis=0))
         ax.plot_wireframe(x_gt, y_gt, z_gt, color=color_gt)

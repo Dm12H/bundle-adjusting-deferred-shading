@@ -1,5 +1,5 @@
 input_dir: data/dtu-nds/
 input_bbox: data/dtu-nds/
-output_dir: ./out
+output_dir: ./out/P_rec_iter/
 gt_points: data/Points
 gt_masks: data/ObsMask

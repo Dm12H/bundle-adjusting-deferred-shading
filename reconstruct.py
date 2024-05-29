@@ -361,7 +361,7 @@ class Reconstructor:
 
             if self.params.train_pose:
                 cam_path = self.cameras_save_path / f"cams_{self.iteration}.png"
-                vis_cameras(self.views,  cam_path)
+                vis_cameras(self.views, self.space_normalization,  cam_path)
 
             self.summary.add_scalar("Errors/PSNR", np.mean(vi_psnr), self.iteration)
 
