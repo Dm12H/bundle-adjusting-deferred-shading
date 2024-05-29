@@ -68,11 +68,12 @@ def rot_to_quat(R, device):
     R21 = R[:, 2, 1]
     R22 = R[:, 2, 2]
 
-    q[:,0]=torch.sqrt(1.0+R00+R11+R22)/2
-    q[:, 1]=(R21-R12)/(4*q[:,0])
+    q[:, 0] = torch.sqrt(1.0+R00+R11+R22)/2
+    q[:, 1] = (R21-R12)/(4*q[:, 0])
     q[:, 2] = (R02 - R20) / (4 * q[:, 0])
     q[:, 3] = (R10 - R01) / (4 * q[:, 0])
     return q
+
 
 def get_pose_init(views, device):
     init_pose = []

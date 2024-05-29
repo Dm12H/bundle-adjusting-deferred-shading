@@ -100,7 +100,7 @@ class Reconstructor:
         if self.params.train_pose:
             self.pose_vecs = torch.nn.Embedding(len(self.views), 7).to(device)
             self.pose_vecs.weight.data.copy_(get_pose_init(self.views, self.device))
-            self.pose_optimizer= torch.optim.Adam(self.pose_vecs.parameters(), lr=self.pose_lr)
+            self.pose_optimizer = torch.optim.Adam(self.pose_vecs.parameters(), lr=self.pose_lr)
         else:
             self.pose_vecs = None
             self.pose_optimizer = None

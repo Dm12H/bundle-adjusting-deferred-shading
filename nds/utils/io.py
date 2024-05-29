@@ -26,20 +26,14 @@ def write_mesh(path, mesh):
     mesh_ = trimesh.Trimesh(vertices=vertices, faces=indices, process=False)
     mesh_.export(path)
 
-def read_views(directory, scale, device, approx=False):
+
+def read_views(directory, scale, device):
     assert isinstance(directory, Path), "view directory must be a path"
 
     image_paths = sorted([path for path in directory.iterdir() if (path.is_file() and path.suffix == '.png')])
-    if approx:
-        init_poses = np.load(directory.parent / "cameras_linear_init.npz")
     views = []
     for image_path in image_paths:
         view = View.load(image_path, device)
-        if approx:
-            view_idx = int(image_path.stem[3:])
-            _, R_init, t_init = decompose(init_poses[f"world_mat_{view_idx}"][:3, :])
-            view.camera.R = torch.tensor(R_init, dtype=torch.float32).to(device)
-            view.camera.t = torch.tensor(t_init, dtype=torch.float32).to(device)
         if scale > 1:
             view.scale(scale)
         views.append(view)
