@@ -4,15 +4,17 @@ import matplotlib.pyplot
 import matplotlib.pyplot as plt
 import numpy as np
 import open3d as o3d
+from nds.utils.geometry import get_rigid_transform
 import torch
+
 
 def get_camera_mesh(scale=1):
     vertices = np.array([[-0.5, -0.5, 1],
                          [0.5, -0.5, 1],
-                         [0.5,0.5,1],
-                         [-0.5,0.5,1],
-                         [0,0,0]]) * scale
-    wireframe = vertices[[0,1,2,3,0,4,1,2,4,3]]
+                         [0.5, 0.5, 1],
+                         [-0.5, 0.5, 1],
+                         [0, 0, 0]]) * scale
+    wireframe = vertices[[0, 1, 2, 3, 0, 4, 1, 2, 4, 3]]
     return wireframe
 
 
@@ -20,6 +22,8 @@ def vis_cameras(views, normalizer, out_path, colors=("blue", "magenta")):
     fig, ax = plt.subplots(figsize=(20, 20), subplot_kw={"projection": "3d"})
     cam_mesh = get_camera_mesh(scale=50)
     color_gt, color_est = colors
+
+    R_rigid, t_rigid, c = get_rigid_transform(views, normalizer)
     for view in views:
         cam = view.camera
         _, R, t = view.transform(normalizer.A_inv, normalizer.A)
@@ -28,16 +32,16 @@ def vis_cameras(views, normalizer, out_path, colors=("blue", "magenta")):
 
         cam_gt = R_gt.T @ (cam_mesh - t_gt).T
         cam_est = R.T @ (cam_mesh - t).T
+        new_cam_est = c * R_rigid @ cam_est + t_rigid[..., np.newaxis]
 
         x_gt, z_gt, y_gt = np.split(cam_gt,3, axis=0)
-        x, z, y = np.split(cam_est, 3, axis=0)
+        x, z, y = np.split(new_cam_est, 3, axis=0)
 
-        dist = np.sqrt(np.sum((cam_gt - cam_est) ** 2, axis=0))
+        dist = np.sqrt(np.sum((cam_gt - new_cam_est) ** 2, axis=0))
         ax.plot_wireframe(x_gt, y_gt, z_gt, color=color_gt)
         if np.mean(dist) < 1:
             continue
         ax.plot_wireframe(x, y, z, color=color_est)
-
 
     ax.set(xlabel="X",
            ylabel="Z",

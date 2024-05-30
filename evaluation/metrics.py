@@ -145,7 +145,7 @@ def camera_est_errors(view, normalizer, rigid):
 def mean_cam_est_err(views, normalizer):
     # record camera pose errors
     dir_errors, pos_errors = [], []
-    rigid_t = get_rigid_transform(views)
+    rigid_t = get_rigid_transform(views, normalizer)
     for view in views:
         angle_err, pos_err = camera_est_errors(view, normalizer, rigid_t)
         dir_errors.append(angle_err)

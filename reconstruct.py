@@ -416,13 +416,12 @@ class Reconstructor:
         end_time = time.time()
         metrics["TIME_ELAPSED"] = end_time - start_time
         if self.gt_points is not None and self.gt_masks is not None:
-            self.denormalize()
             denorm_mesh = self.space_normalization.denormalize_mesh(
                 self.mesh.detach().to('cpu')
             )
             gt_cloud, eval_cloud = prepare_pcl(
                 denorm_mesh, self.gt_points, self.gt_masks, self.gt_ground)
-            rigid = get_rigid_transform(self.views)
+            rigid = get_rigid_transform(self.views, self.space_normalization)
             T_mat = create_t_from_rigid(*rigid)
             eval_cloud = eval_cloud.transform(T_mat)
             metrics["CHAMFER"] = chamfer_dist(gt_cloud, eval_cloud)
@@ -430,6 +429,7 @@ class Reconstructor:
         if self.params.train_pose:
             cams_out = self.exp_dir / "cam_params"
             cams_out.mkdir(parents=True, exist_ok=True)
+            self.denormalize()
             for view in self.views:
                 view.save(cams_out)
         for path in (Path.cwd(), self.exp_dir):

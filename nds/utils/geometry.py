@@ -416,12 +416,13 @@ def downsample_cloud(cloud, thresh=0.2):
     return points_downsampled
 
 
-def get_rigid_transform(views):
+def get_rigid_transform(views, normalizer):
     cam_centers = []
     gt_centers = []
     for view in views:
         cam = view.camera
-        cam_centers.append(cam.center.detach().cpu().numpy())
+        _, R_cur, t_cur = view.transform(normalizer.A_inv, normalizer.A)
+        cam_centers.append(-R_cur.T @ t_cur)
         gt_centers.append(cam.center_general(cam.R_gt, cam.t_gt))
     cam_centers = np.array(cam_centers)
     gt_centers = np.array(gt_centers)

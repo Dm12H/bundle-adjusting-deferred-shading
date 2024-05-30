@@ -1,7 +1,7 @@
 paths:
   input_dir: data/dtu-nds/
   input_bbox: data/dtu-nds/
-  output_dir: ./out
+  output_dir: ./out/P_rec_iter/
   gt_points: data/Points
   gt_masks: data/ObsMask
 params:
@@ -28,9 +28,12 @@ params:
     views_per_iter: 1
 run:
   run_name: 114_buddha
-  subdir_name: its_500
-  iterations: 500
-  upsample_iterations: []
+  subdir_name: null
+  iterations: 100
+  upsample_iterations:
+  - 500
+  - 1000
+  - 1500
   rebuild_iterations: []
   save_frequency: 100
   visualization_frequency: 100
