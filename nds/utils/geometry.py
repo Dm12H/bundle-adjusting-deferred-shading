@@ -422,11 +422,12 @@ def get_rigid_transform(views, normalizer):
     for view in views:
         cam = view.camera
         _, R_cur, t_cur = view.transform(normalizer.A_inv, normalizer.A)
+        print(type(R_cur), type(t_cur))
         cam_centers.append(-R_cur.T @ t_cur)
-        gt_centers.append(cam.center_general(cam.R_gt, cam.t_gt))
+        gt_centers.append(-cam.R_gt.T @ cam.t_gt)
     cam_centers = np.array(cam_centers)
     gt_centers = np.array(gt_centers)
-    _, R, t, c = Superpose3D(gt_centers, cam_centers)
+    _, R, t, c = Superpose3D(gt_centers, cam_centers, allow_rescale=True)
     return R, t, c
 
 
