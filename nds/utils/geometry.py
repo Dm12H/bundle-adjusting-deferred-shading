@@ -422,7 +422,6 @@ def get_rigid_transform(views, normalizer):
     for view in views:
         cam = view.camera
         _, R_cur, t_cur = view.transform(normalizer.A_inv, normalizer.A)
-        print(type(R_cur), type(t_cur))
         cam_centers.append(-R_cur.T @ t_cur)
         gt_centers.append(-cam.R_gt.T @ cam.t_gt)
     cam_centers = np.array(cam_centers)
