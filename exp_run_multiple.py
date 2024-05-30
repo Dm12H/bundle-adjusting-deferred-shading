@@ -7,33 +7,24 @@ def run_multiple():
         '106_birds', '69_snowman', '40_block', '65_skull', '105_plush',
         '114_buddha', '55_bunny', '24_redhouse', '122_owl', '118_angel']
     idx = 0
-    it_exps = []
-    it_upsaples = []
-    for its in range(2500, 5000, 500):
-        upsample_list = list(range(its - 2000, its-500, 500))
-        it_exps.append(its)
-        it_upsaples.append(upsample_list)
-    while idx < len(it_exps):
-        num_its = it_exps[idx]
-        upsamples = it_upsaples[idx]
+    upsamples = [2000, 2500, 3000]
+    rebuilds = [500, 1000, 1500]
+    while idx < len(dtu_objects):
+        run_name = dtu_objects[idx]
         try:
             subprocess.run(
                 ["dvc", "exp", "run", "-f",
                  "--downstream", "run-eval",
-                 "--name", f"its_{num_its}",
-                 "-S", f"run.run_name=114_buddha",
-                 "-S", f"run.subdir_name=its_{num_its}",
-                 "-S", "run.run_name=114_buddha",
+                 "--name", f"{run_name}",
+                 "-S", f"run.run_name={run_name}",
                  "-S", f"run.upsample_iterations={upsamples}",
-                 "-S", f"run.iterations={num_its}"],
+                 "-S", f"run.rebuild_iterations={rebuilds}",
+                 "-S", "run.iterations=3500"],
                 timeout=1000)
         except subprocess.TimeoutExpired:
-            print(f"Had to stop exp its_{num_its}, rerunning")
+            print(f"Had to stop exp {run_name}, rerunning")
             continue
         idx += 1
-        subprocess.run(
-            ["dvc", "exp", "save", "--name", f"its_{num_its}"]
-        )
 
 
 if __name__ == "__main__":

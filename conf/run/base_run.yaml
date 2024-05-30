@@ -9,5 +9,5 @@ image_scale: 2
 device: 0
 visualization_views: []
 perturbs:
-  pos: 10.
-  dir: 10.
+  pos: 5.
+  dir: 5.
