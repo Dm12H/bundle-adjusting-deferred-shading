@@ -58,7 +58,7 @@ class View:
 
         color = color[:, :, :3]
 
-        return cls(color, mask, camera, device=device)
+        return cls(color, mask, camera, device=device, name=image_path.stem)
 
 
 
