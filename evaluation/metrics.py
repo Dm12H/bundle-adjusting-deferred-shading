@@ -2,7 +2,7 @@ import numpy as np
 import open3d as o3d
 from skimage.metrics import structural_similarity
 
-from nds.utils.geometry import mesh_to_pcl, downsample_cloud, get_camps_rigid_transform
+from nds.utils.geometry import mesh_to_pcl, downsample_cloud, get_rigid_transform
 
 
 def psnr_metric(view, rec_im):
@@ -145,7 +145,7 @@ def camera_est_errors(view, normalizer, rigid):
 def mean_cam_est_err(views, normalizer):
     # record camera pose errors
     dir_errors, pos_errors = [], []
-    rigid_t = get_camps_rigid_transform(views)
+    rigid_t = get_rigid_transform(views)
     for view in views:
         angle_err, pos_err = camera_est_errors(view, normalizer, rigid_t)
         dir_errors.append(angle_err)

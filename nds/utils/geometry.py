@@ -416,13 +416,13 @@ def downsample_cloud(cloud, thresh=0.2):
     return points_downsampled
 
 
-def get_camps_rigid_transform(views):
+def get_rigid_transform(views):
     cam_centers = []
     gt_centers = []
     for view in views:
         cam = view.camera
         cam_centers.append(cam.center.cpu().numpy())
-        gt_centers.append(cam.center_general(cam.R_tg, cam.t_gt))
+        gt_centers.append(cam.center_general(cam.R_gt, cam.t_gt))
     cam_centers = np.array(cam_centers)
     gt_centers = np.array(gt_centers)
     _, R, t, c = Superpose3D(gt_centers, cam_centers)
