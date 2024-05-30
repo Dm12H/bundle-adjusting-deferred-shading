@@ -124,8 +124,8 @@ def camera_est_errors(view, normalizer, rigid):
 
     # calculate degree disparity
     view_direction = np.squeeze(camera.look_dir(R_cur))
+    view_direction = R_rigid.T @ view_direction
     view_direction = view_direction / np.linalg.norm(view_direction)
-    view_direction = R_rigid @ view_direction
 
     gt_view_direction = np.squeeze(camera.look_dir(camera.R_gt))
     gt_view_direction = gt_view_direction / np.linalg.norm(gt_view_direction)

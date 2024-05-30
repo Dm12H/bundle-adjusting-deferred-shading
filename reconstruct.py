@@ -296,6 +296,8 @@ class Reconstructor:
         self.vertices_optimizer = torch.optim.Adam([self.vertex_offsets], lr=self.vertices_lr)
         self.optimizers = [self.vertices_optimizer, self.shader_optimizer]
         if self.params.train_pose:
+            for g in self.pose_optimizer.param_groups:
+                g["lr"] /= 4
             self.optimizers += [self.pose_optimizer]
 
     def rebuild_mesh(self):
