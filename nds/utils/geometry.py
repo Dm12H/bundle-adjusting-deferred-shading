@@ -2,6 +2,7 @@ import meshzoo
 import numpy as np
 import torch
 from sklearn.neighbors import NearestNeighbors
+from superpose3d import Superpose3D
 from typing import List, Tuple, Union
 import multiprocessing as mp
 
@@ -189,6 +190,7 @@ def create_coordinate_grid(size: int, scale: float = 1.0, device: torch.device =
 
     return grid * scale
 
+
 def marching_cubes(voxel_grid: torch.tensor, voxel_occupancy: torch.tensor, level: float = 0.5, **kwargs) -> Tuple[torch.tensor, torch.IntTensor]:
     """ Compute the marching cubes surface from an occupancy grid.
 
@@ -212,6 +214,7 @@ def marching_cubes(voxel_grid: torch.tensor, voxel_occupancy: torch.tensor, leve
     faces = torch.from_numpy(faces.copy()).to(voxel_grid.device)
 
     return vertices, faces
+
 
 def compute_visual_hull(views, aabb: AABB, grid_size, device, return_voxel_grid=False, clip_view_bounds=True, watertight=True):
     """ 
@@ -399,6 +402,7 @@ def mesh_to_pcl(mesh, thresh=0.2):
 
     return pcd
 
+
 def downsample_cloud(cloud, thresh=0.2):
     nn_engine = NearestNeighbors(n_neighbors=1, radius=thresh, algorithm='kd_tree', n_jobs=-1)
     nn_engine.fit(cloud)
@@ -410,4 +414,24 @@ def downsample_cloud(cloud, thresh=0.2):
             mask[curr] = 1
     points_downsampled = cloud[mask]
     return points_downsampled
+
+
+def get_camps_rigid_transform(views):
+    cam_centers = []
+    gt_centers = []
+    for view in views:
+        cam = view.camera
+        cam_centers.append(cam.center.cpu().numpy())
+        gt_centers.append(cam.center_general(cam.R_tg, cam.t_gt))
+    cam_centers = np.array(cam_centers)
+    gt_centers = np.array(gt_centers)
+    _, R, t, c = Superpose3D(gt_centers, cam_centers)
+    return R, t, c
+
+
+def create_t_from_rigid(R, t, c):
+    T = np.eye(4)
+    T[:3, :3] = c * R
+    T[:3, 3] = t
+    return T
 

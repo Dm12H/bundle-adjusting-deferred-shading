@@ -1,12 +1,14 @@
 from copy import deepcopy
+
+import matplotlib.pyplot
 import matplotlib.pyplot as plt
 import numpy as np
 import open3d as o3d
 import torch
 
 def get_camera_mesh(scale=1):
-    vertices = np.array([[-0.5,-0.5,1],
-                         [0.5,-0.5,1],
+    vertices = np.array([[-0.5, -0.5, 1],
+                         [0.5, -0.5, 1],
                          [0.5,0.5,1],
                          [-0.5,0.5,1],
                          [0,0,0]]) * scale
@@ -41,6 +43,7 @@ def vis_cameras(views, normalizer, out_path, colors=("blue", "magenta")):
            ylabel="Z",
            zlabel="Y")
     fig.savefig(out_path)
+    matplotlib.pyplot.close(fig)
 
 
 def pcl_chamfer_color(gt_pcl, mesh_pcl, clip=10):

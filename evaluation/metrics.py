@@ -2,7 +2,7 @@ import numpy as np
 import open3d as o3d
 from skimage.metrics import structural_similarity
 
-from nds.utils.geometry import mesh_to_pcl, downsample_cloud
+from nds.utils.geometry import mesh_to_pcl, downsample_cloud, get_camps_rigid_transform
 
 
 def psnr_metric(view, rec_im):
@@ -116,14 +116,16 @@ def chamfer_dist(gt_cloud, eval_cloud, max_dist=10):
     return mean_dist
 
 
-def camera_est_errors(view, normalizer):
+def camera_est_errors(view, normalizer, rigid):
 
     camera = view.camera
     K_cur, R_cur, t_cur = view.transform(normalizer.A_inv, normalizer.A)
+    R_rigid, t_rigid, c = rigid
 
     # calculate degree disparity
     view_direction = np.squeeze(camera.look_dir(R_cur))
     view_direction = view_direction / np.linalg.norm(view_direction)
+    view_direction = R_rigid @ view_direction
 
     gt_view_direction = np.squeeze(camera.look_dir(camera.R_gt))
     gt_view_direction = gt_view_direction / np.linalg.norm(gt_view_direction)
@@ -134,6 +136,7 @@ def camera_est_errors(view, normalizer):
 
     # calculate distance disparity
     camera_pos = camera.center_general(R_cur, t_cur)
+    camera_pos = c * R_rigid @ camera_pos + t_rigid
     camera_pos_gt = camera.center_general(camera.R_gt, camera.t_gt)
     dist = np.sqrt(np.sum((camera_pos - camera_pos_gt) ** 2))
     return angle_deg, dist
@@ -142,8 +145,9 @@ def camera_est_errors(view, normalizer):
 def mean_cam_est_err(views, normalizer):
     # record camera pose errors
     dir_errors, pos_errors = [], []
+    rigid_t = get_camps_rigid_transform(views)
     for view in views:
-        angle_err, pos_err = camera_est_errors(view, normalizer)
+        angle_err, pos_err = camera_est_errors(view, normalizer, rigid_t)
         dir_errors.append(angle_err)
         pos_errors.append(pos_err)
     mdir_error = np.mean(dir_errors)

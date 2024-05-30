@@ -17,11 +17,12 @@ class View:
         device (torch.device): Device where the images and camera are stored
     """
 
-    def __init__(self, color, mask, camera, device='cpu'):
+    def __init__(self, color, mask, camera, name=None, device='cpu'):
         self.color = color
         self.mask = mask
         self.camera = camera.to(device)
         self.device = device
+        self.name = name
 
     @classmethod
     def load(cls, image_path, device='cpu'):
@@ -58,6 +59,8 @@ class View:
         color = color[:, :, :3]
 
         return cls(color, mask, camera, device=device)
+
+
 
     def to(self, device: str = "cpu"):
         color = self.color.to(device)
@@ -154,3 +157,15 @@ class View:
         pixels = pixels[..., :2] / pixels[..., 2:]
         depths = points_c[..., 2:] if not depth_as_distance else torch.norm(points_c, p=2, dim=-1, keepdim=True)
         return torch.cat([pixels, depths], dim=-1)
+
+    def save(self, out_path):
+        out_path = Path(out_path)
+        if self.name is None:
+            raise ValueError("cannot save camera with unknown name!")
+        # Load the camera
+        cam = self.camera
+        cam.to()
+
+        np.savetxt(out_path / (self.name + "_k.txt"), cam.K.numpy())
+        np.savetxt(out_path / (self.name + "_r.txt"), cam.R.numpy())
+        np.savetxt(out_path / (self.name + "_t.txt"), cam.t.numpy())

@@ -26,7 +26,9 @@ from nds.modules import (
     SpaceNormalization, NeuralShader, ViewSampler
 )
 from nds.utils import (
-    AABB, read_views, read_mesh, write_mesh, visualize_views, generate_mesh, mesh_generator_names, get_pose_init, quat_to_rot
+    AABB, read_views, read_mesh, write_mesh, visualize_views,
+    generate_mesh, mesh_generator_names, get_pose_init, quat_to_rot,
+    get_camps_rigid_transform, create_t_from_rigid
 )
 
 from evaluation.vis import vis_cameras
@@ -420,7 +422,16 @@ class Reconstructor:
             )
             gt_cloud, eval_cloud = prepare_pcl(
                 denorm_mesh, self.gt_points, self.gt_masks, self.gt_ground)
+            rigid = get_camps_rigid_transform(self.views)
+            T_mat = create_t_from_rigid(*rigid)
+            eval_cloud = eval_cloud.transform(T_mat)
             metrics["CHAMFER"] = chamfer_dist(gt_cloud, eval_cloud)
+        # save cam params
+        if self.params.train_pose:
+            cams_out = self.exp_dir / "cam_params"
+            cams_out.mkdir(parents=True, exist_ok=True)
+            for view in self.views:
+                view.save(cams_out)
         for path in (Path.cwd(), self.exp_dir):
             with open(path / 'metrics.json', 'w') as f:
                 json.dump(metrics, f)
