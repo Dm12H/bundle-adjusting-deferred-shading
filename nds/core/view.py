@@ -17,7 +17,7 @@ class View:
         device (torch.device): Device where the images and camera are stored
     """
 
-    def __init__(self, color, mask, camera, name=None, device='cpu'):
+    def __init__(self, color, mask, camera, device='cpu', name=None):
         self.color = color
         self.mask = mask
         self.camera = camera.to(device)
