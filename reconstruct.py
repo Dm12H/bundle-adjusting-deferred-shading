@@ -426,7 +426,10 @@ class Reconstructor:
             rigid = get_rigid_transform(self.views, self.space_normalization)
             T_mat = create_t_from_rigid(*rigid)
             eval_cloud_corrected = eval_cloud.transform(T_mat)
-            metrics["CHAMFER"] = chamfer_dist(gt_cloud, eval_cloud_corrected)
+            metrics["CHAMFER"] = chamfer_dist(
+                gt_cloud,
+                eval_cloud_corrected,
+                correct=self.params.train_pose)
         # save cam params
         if self.params.train_pose:
             cams_out = self.exp_dir / "cam_params"

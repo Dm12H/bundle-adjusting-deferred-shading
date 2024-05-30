@@ -1,3 +1,5 @@
+import copy
+
 import numpy as np
 import open3d as o3d
 from skimage.metrics import structural_similarity
@@ -109,11 +111,47 @@ def prepare_pcl(mesh, gt_cloud, mask_mat, ground_plane):
     return masked_cloud, eval_cloud
 
 
-def chamfer_dist(gt_cloud, eval_cloud, max_dist=10):
-    mesh_to_pcl_dist = np.asarray(gt_cloud.compute_point_cloud_distance(eval_cloud))
-    within_max_dist = mesh_to_pcl_dist < max_dist
-    mean_dist = np.mean(mesh_to_pcl_dist[within_max_dist])
-    return mean_dist
+def chamfer_dist(gt_cloud, eval_cloud, max_dist=10, correct=False):
+    def _chamfer(ref_cloud, guess):
+        mesh_to_pcl_dist = np.asarray(
+            ref_cloud.compute_point_cloud_distance(guess))
+        within_max_dist = mesh_to_pcl_dist < max_dist
+        mean_dist = np.mean(mesh_to_pcl_dist[within_max_dist])
+        return mean_dist
+    dist_normal = _chamfer(gt_cloud, eval_cloud)
+    if correct:
+        # downsample clouds to match
+        gt_cloud_sparse = gt_cloud.voxel_down_sample(voxel_size=1)
+        eval_cloud_sparse = eval_cloud.voxel_down_sample(voxel_size=1)
+        pcd_tree = o3d.geometry.KDTreeFlann(eval_cloud_sparse)
+
+        # run cycle and find best pairs
+        n_points = len(np.asarray(gt_cloud_sparse.points))
+        gt_points = gt_cloud_sparse.points
+        indices = np.zeros((n_points, 2), dtype=np.int32)
+        indices[:, 0] = np.arange(n_points)
+
+        for i in range(n_points):
+            _, idx, _ = pcd_tree.search_knn_vector_3d(gt_points[i], 1)
+            indices[i, 1] = idx[0]
+
+        gt_vec = np.asarray(gt_points)
+        eval_vec = np.asarray(eval_cloud_sparse.points)
+
+        paired_points = eval_vec[indices[:, 1]]
+        dist = np.sqrt(np.sum((gt_vec - paired_points) ** 2, axis=1))
+        point_filter = np.logical_and(
+            dist > max_dist,
+            dist < max_dist ** 2)
+        shift_vec = np.median((gt_vec - paired_points)[point_filter], axis=0)
+
+        T = np.eye(4)
+        T[:3, 3] = shift_vec
+        eval_cloud_corrected = copy.deepcopy(eval_cloud).transform(T)
+        dist_alternative = _chamfer(gt_cloud, eval_cloud_corrected)
+        return min(dist_normal, dist_alternative)
+    else:
+        return dist_normal
 
 
 def camera_est_errors(view, normalizer, rigid):
