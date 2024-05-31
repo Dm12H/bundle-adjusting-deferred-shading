@@ -19,7 +19,7 @@ def run_multiple():
                  "-S", f"run.run_name={run_name}",
                  "-S", f"run.upsample_iterations={upsamples}",
                  "-S", f"run.rebuild_iterations={rebuilds}",
-                 "-S", "run.iterations=3500"],
+                 "-S", "run.iterations=4000"],
                 timeout=1000)
         except subprocess.TimeoutExpired:
             print(f"Had to stop exp {run_name}, rerunning")
