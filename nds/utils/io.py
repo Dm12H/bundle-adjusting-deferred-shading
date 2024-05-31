@@ -1,5 +1,6 @@
 import numpy as np
 from pathlib import Path
+import re
 
 import torch
 import trimesh
@@ -33,6 +34,9 @@ def read_views(directory, scale, device):
     image_paths = sorted([path for path in directory.iterdir() if (path.is_file() and path.suffix == '.png')])
     views = []
     for image_path in image_paths:
+        cam_id = int(re.search(r"\d+", image_path.name).group())
+        if cam_id > 48:
+            continue
         view = View.load(image_path, device)
         if scale > 1:
             view.scale(scale)
