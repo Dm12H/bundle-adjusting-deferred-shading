@@ -7,8 +7,8 @@ def run_multiple():
         '106_birds', '69_snowman', '40_block', '65_skull', '105_plush',
         '114_buddha', '55_bunny', '24_redhouse', '122_owl', '118_angel']
     idx = 0
-    upsamples = [2000, 2500, 3000]
-    rebuilds = [500, 1000, 1500]
+    upsamples = [2500, 3000, 3500]
+    rebuilds = [500]
     while idx < len(dtu_objects):
         run_name = dtu_objects[idx]
         try:
